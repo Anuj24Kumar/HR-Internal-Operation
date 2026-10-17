@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Environment variables and secrets
+.env
+.env.*
+
+# Allow an example environment file
+!.env.example
+
+# Uploaded files
+uploads/*
+!uploads/.gitkeep
+
+# Logs
+logs/
+*.log
+
+# Build and coverage
+dist/
+coverage/
+
+# Editor and OS files
+.vscode/
+.DS_Store
+Thumbs.db
