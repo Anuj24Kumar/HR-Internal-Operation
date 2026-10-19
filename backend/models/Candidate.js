@@ -25,6 +25,18 @@ const interviewRoundSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    feedbackSubmittedAt: {
+      type: Date,
+      default: null,
+    },
+    feedbackLocked: {
+      type: Boolean,
+      default: false,
+    },
+    lockedAt: {
+      type: Date,
+      default: null,
+    },
     status: {
       type: String,
       enum: ["scheduled", "completed", "cancelled"],
@@ -62,6 +74,11 @@ const candidateSchema = new mongoose.Schema(
       type: String,
       required: [true, "Position is required"],
       trim: true,
+    },
+    department: {
+      type: String,
+      trim: true,
+      default: null,
     },
     source: {
       type: String,

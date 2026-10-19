@@ -22,6 +22,8 @@ app.get("/api/health", (req, res) => {
 // Import Routes
 const authRoutes = require("./routes/authRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const interviewerRoutes = require("./routes/interviewer/interviewerRoutes");
+const hiringManagerRoutes = require("./routes/hiring-manager/hiringManagerRoutes");
 
 // Mount Routes (supporting both /api and /api/v1 prefixes)
 app.use("/api/auth", authRoutes);
@@ -29,6 +31,9 @@ app.use("/api/v1/auth", authRoutes);
 
 app.use("/api/admin", adminRoutes);
 app.use("/api/v1/admin", adminRoutes);
+
+app.use("/api/v1", interviewerRoutes);
+app.use("/api/v1", hiringManagerRoutes);
 
 // Global 404 handler for unmatched routes
 app.use((req, res) => {
