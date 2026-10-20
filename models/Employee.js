@@ -31,9 +31,22 @@ const employeeSchema = new mongoose.Schema(
   {
     empId: {
       type: String,
-      required: [true, "Employee ID is required"],
       unique: true,
+      sparse: true,
       trim: true,
+      index: true,
+    },
+    employeeCode: {
+      type: String,
+      trim: true,
+      unique: true,
+      sparse: true,
+    },
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      unique: true,
+      sparse: true,
       index: true,
     },
     candidateId: {
@@ -44,17 +57,21 @@ const employeeSchema = new mongoose.Schema(
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: [true, "User reference is required"],
       index: true,
     },
     type: {
       type: String,
-      required: [true, "Employee type is required"],
       enum: {
         values: ["intern", "employee"],
         message: "{VALUE} is not a valid employee type",
       },
+      default: "employee",
       index: true,
+    },
+    employmentType: {
+      type: String,
+      enum: ["full_time", "part_time", "contract", "intern"],
+      default: "full_time",
     },
     personalInfo: {
       dob: { type: Date, default: null },
@@ -85,18 +102,34 @@ const employeeSchema = new mongoose.Schema(
       ref: "Employee",
       default: null,
     },
+    manager: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    location: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     joiningDate: {
       type: Date,
       default: Date.now,
     },
     salary: {
-      type: Number,
-      default: 0,
+      type: mongoose.Schema.Types.Mixed,
+      default: () => 0,
     },
     status: {
       type: String,
       enum: {
-        values: ["active", "notice", "exited"],
+        values: [
+          "active",
+          "notice",
+          "exited",
+          "resigned",
+          "terminated",
+        ],
         message: "{VALUE} is not a valid employment status",
       },
       default: "active",

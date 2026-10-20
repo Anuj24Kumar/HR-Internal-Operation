@@ -5,8 +5,18 @@ const userSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: [true, "Name is required"],
       trim: true,
+      default: "",
+    },
+    firstName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    lastName: {
+      type: String,
+      trim: true,
+      default: "",
     },
     email: {
       type: String,
@@ -16,25 +26,33 @@ const userSchema = new mongoose.Schema(
       trim: true,
       index: true,
     },
+    password: {
+      type: String,
+      minlength: [8, "Password must be at least 8 characters"],
+      select: false,
+    },
     passwordHash: {
       type: String,
-      required: [true, "Password hash is required"],
+      select: false,
+    },
+    phone: {
+      type: String,
+      trim: true,
+      default: "",
     },
     role: {
       type: String,
       required: [true, "Role is required"],
-      enum: {
-        values: [
-          "admin",
-          "hr",
-          "hiring_manager",
-          "interviewer",
-          "candidate",
-          "intern",
-          "employee",
-        ],
-        message: "{VALUE} is not a valid role",
-      },
+      enum: [
+        "admin",
+        "hr",
+        "hiring_manager",
+        "interviewer",
+        "candidate",
+        "intern",
+        "employee",
+      ],
+      default: "candidate",
       index: true,
     },
     candidateId: {
@@ -57,6 +75,23 @@ const userSchema = new mongoose.Schema(
       default: true,
       index: true,
     },
+    status: {
+      type: String,
+      enum: ["active", "inactive", "suspended"],
+      default: "active",
+    },
+    profileImage: {
+      type: String,
+      default: "",
+    },
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    lastLogin: {
+      type: Date,
+      default: null,
+    },
     resetToken: {
       type: String,
       default: null,
@@ -71,20 +106,40 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-// Method to verify password
+userSchema.pre("validate", function () {
+  if (!this.name && (this.firstName || this.lastName)) {
+    this.name = [this.firstName, this.lastName].filter(Boolean).join(" ");
+  }
+
+  if (!this.password && !this.passwordHash) {
+    this.invalidate("password", "A password is required");
+  }
+
+  if (!this.name && !this.firstName && !this.lastName) {
+    this.invalidate("name", "A user name is required");
+  }
+
+  if (this.isModified("status") && !this.isModified("isActive")) {
+    this.isActive = this.status === "active";
+  } else if (this.isModified("isActive")) {
+    this.status = this.isActive ? "active" : "inactive";
+  }
+});
+
 userSchema.methods.comparePassword = async function (candidatePassword) {
-  return bcrypt.compare(candidatePassword, this.passwordHash);
+  const storedPassword = this.passwordHash || this.password;
+  return storedPassword
+    ? bcrypt.compare(candidatePassword, storedPassword)
+    : false;
 };
 
-// Exclude passwordHash from JSON responses by default
 userSchema.methods.toJSON = function () {
   const user = this.toObject();
+  delete user.password;
   delete user.passwordHash;
   delete user.resetToken;
   delete user.resetExpires;
   return user;
 };
 
-const User = mongoose.model("User", userSchema);
-
-module.exports = User;
+module.exports = mongoose.model("User", userSchema);

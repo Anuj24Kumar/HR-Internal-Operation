@@ -4,27 +4,19 @@ const documentSchema = new mongoose.Schema(
   {
     ownerId: {
       type: mongoose.Schema.Types.ObjectId,
-      required: [true, "Owner ID is required"],
       refPath: "ownerType",
+      default: null,
       index: true,
     },
     ownerType: {
       type: String,
-      required: [true, "Owner type is required"],
-      enum: {
-        values: ["Candidate", "Employee"],
-        message: "{VALUE} must be either Candidate or Employee",
-      },
+      enum: ["Candidate", "Employee", "Intern"],
       index: true,
     },
     category: {
       type: String,
-      required: [true, "Document category is required"],
       trim: true,
-    },
-    fileUrl: {
-      type: String,
-      required: [true, "File URL is required"],
+      default: "",
     },
     fileType: {
       type: String,
@@ -36,16 +28,14 @@ const documentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: {
-        values: ["pending", "uploaded", "verified", "rejected"],
-        message: "{VALUE} is not a valid document status",
-      },
+      enum: ["pending", "uploaded", "verified", "rejected"],
       default: "uploaded",
       index: true,
     },
     rejectionReason: {
       type: String,
-      default: null,
+      default: "",
+      trim: true,
     },
     version: {
       type: Number,
@@ -61,12 +51,40 @@ const documentSchema = new mongoose.Schema(
       ref: "User",
       default: null,
     },
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      index: true,
+    },
+    documentType: {
+      type: String,
+      enum: [
+        "resume",
+        "aadhaar",
+        "pan",
+        "educational_certificate",
+        "experience_letter",
+        "other",
+      ],
+    },
+    documentName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    fileUrl: {
+      type: String,
+      required: [true, "File URL is required"],
+      trim: true,
+    },
+    uploadedAt: {
+      type: Date,
+      default: Date.now,
+    },
   },
   {
     timestamps: true,
   }
 );
 
-const Document = mongoose.model("Document", documentSchema);
-
-module.exports = Document;
+module.exports = mongoose.model("Document", documentSchema);

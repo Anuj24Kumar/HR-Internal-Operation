@@ -1,8 +1,6 @@
 const jwt = require("jsonwebtoken");
 const { User } = require("../models");
 
-const JWT_SECRET = process.env.JWT_SECRET || "supersecret_jwt_key_hr_platform_dev";
-
 /**
  * Middleware to verify JWT authentication token and attach authenticated user to req.user
  */
@@ -40,7 +38,15 @@ const verifyToken = async (req, res, next) => {
       });
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET);
+    if (!process.env.JWT_SECRET) {
+      console.error("Authentication error: JWT_SECRET is not configured");
+      return res.status(500).json({
+        success: false,
+        message: "Authentication is not configured",
+      });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.userId);
 
     if (!user) {
@@ -50,7 +56,7 @@ const verifyToken = async (req, res, next) => {
       });
     }
 
-    if (!user.isActive) {
+    if (!user.isActive || user.status !== "active") {
       return res.status(403).json({
         success: false,
         message: "Your account has been deactivated. Please contact an administrator.",

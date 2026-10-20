@@ -1,13 +1,27 @@
 const express = require("express");
-const router = express.Router();
-const { login, getMe, seedInitialData } = require("../controllers/authController");
+
+const {
+  registerUser,
+  loginUser,
+  getMe,
+  getAdminData,
+  seedInitialData,
+} = require("../controllers/authController");
+const { protect } = require("../middleware/authMiddleware");
+const { authorizeRoles } = require("../middleware/roleMiddleware");
 const { verifyToken } = require("../middlewares/authMiddleware");
 
-// Public routes
-router.post("/login", login);
-router.post("/seed", seedInitialData);
+const router = express.Router();
 
-// Protected route
-router.get("/me", verifyToken, getMe);
+router.post("/register", registerUser);
+router.post("/login", loginUser);
+router.post("/seed", seedInitialData);
+router.get("/me", protect, getMe);
+router.get(
+  "/test-admin",
+  protect,
+  authorizeRoles("admin", "hr"),
+  getAdminData
+);
 
 module.exports = router;

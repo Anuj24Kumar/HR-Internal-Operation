@@ -1,97 +1,237 @@
-const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const { User, Workflow, LetterTemplate } = require("../models");
+const jwt = require("jsonwebtoken");
+const { User, Candidate, Workflow, LetterTemplate } = require("../models");
 
-const JWT_SECRET = process.env.JWT_SECRET || "supersecret_jwt_key_hr_platform_dev";
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
+const getJwtSecret = () => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error("JWT_SECRET is not configured");
+  }
 
-/**
- * Public Login
- * POST /api/auth/login
- */
-const login = async (req, res) => {
+  return process.env.JWT_SECRET;
+};
+
+const registerUser = async (req, res) => {
+  let createdUser;
+
+  try {
+    const { firstName, lastName, email, password, phone, position } = req.body;
+
+    if (
+      typeof firstName !== "string" ||
+      !firstName.trim() ||
+      typeof lastName !== "string" ||
+      !lastName.trim() ||
+      typeof email !== "string" ||
+      !email.trim() ||
+      typeof password !== "string" ||
+      !password ||
+      typeof position !== "string" ||
+      !position.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "First name, last name, email, password and position are required",
+      });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 8 characters long",
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const existingUser = await User.findOne({ email: normalizedEmail });
+
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: "User already exists with this email",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 12);
+    createdUser = await User.create({
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      name: `${firstName.trim()} ${lastName.trim()}`,
+      email: normalizedEmail,
+      password: hashedPassword,
+      phone: typeof phone === "string" ? phone.trim() : "",
+      role: "candidate",
+    });
+
+    const candidate = await Candidate.create({
+      user: createdUser._id,
+      userId: createdUser._id,
+      name: createdUser.name,
+      email: createdUser.email,
+      phone: createdUser.phone,
+      position: position.trim(),
+      applicationSource: "Direct",
+      source: "Direct",
+      status: "Applied",
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "User registered successfully",
+      user: {
+        id: createdUser._id,
+        firstName: createdUser.firstName,
+        lastName: createdUser.lastName,
+        email: createdUser.email,
+        phone: createdUser.phone,
+        role: createdUser.role,
+        status: createdUser.status,
+        createdAt: createdUser.createdAt,
+      },
+      application: {
+        id: candidate._id,
+        position: candidate.position,
+        applicationSource: candidate.applicationSource,
+        appliedDate: candidate.appliedDate,
+        status: candidate.status,
+      },
+    });
+  } catch (error) {
+    if (createdUser?._id) {
+      try {
+        await User.findByIdAndDelete(createdUser._id);
+      } catch (cleanupError) {
+        console.error("User cleanup error:", cleanupError.message);
+      }
+    }
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "An account with this email already exists",
+      });
+    }
+
+    console.error("Registration error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
+    if (typeof email !== "string" || !email.trim() || !password) {
       return res.status(400).json({
         success: false,
         message: "Email and password are required",
       });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    const user = await User.findOne({
+      email: email.trim().toLowerCase(),
+    }).select("+password +passwordHash");
+
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: "Invalid email ",
+        message: "Invalid email or password",
       });
     }
 
-    if (!user.isActive) {
+    if (user.status !== "active" || user.isActive === false) {
       return res.status(403).json({
         success: false,
-        message: "Your account has been deactivated. Please contact an administrator.",
+        message: "Your account is not active",
       });
     }
 
-    const isMatch = await bcrypt.compare(password, user.passwordHash);
-    if (!isMatch) {
+    const storedPassword = user.password || user.passwordHash;
+    const isPasswordValid =
+      storedPassword && (await bcrypt.compare(password, storedPassword));
+
+    if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        message: "Invalid  password",
+        message: "Invalid email or password",
       });
     }
 
     const token = jwt.sign(
-      { userId: user._id, role: user.role },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
+      {
+        userId: user._id.toString(),
+        role: user.role,
+      },
+      getJwtSecret(),
+      {
+        expiresIn: process.env.JWT_EXPIRES_IN || "7d",
+      }
     );
 
-    res.status(200).json({
+    user.lastLogin = new Date();
+    await user.save();
+
+    return res.status(200).json({
       success: true,
       message: "Login successful",
       token,
       user: {
-        _id: user._id,
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
         name: user.name,
         email: user.email,
         role: user.role,
+        status: user.status,
       },
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("Login error:", error.message);
+    return res.status(500).json({
       success: false,
-      message: "Login error",
-      error: error.message,
+      message: "Internal server error",
     });
   }
 };
 
-/**
- * Return current logged-in user profile
- * GET /api/auth/me
- */
 const getMe = async (req, res) => {
   try {
-    res.status(200).json({
+    const userId = req.user.id || req.user._id;
+    const user = userId ? await User.findById(userId) : req.user;
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    return res.status(200).json({
       success: true,
-      user: req.user,
+      user: {
+        id: user._id || user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        status: user.status || (user.isActive === false ? "inactive" : "active"),
+        isEmailVerified: user.isEmailVerified,
+        createdAt: user.createdAt,
+      },
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("Get current user error:", error.message);
+    return res.status(500).json({
       success: false,
-      message: "Failed to fetch user profile",
-      error: error.message,
+      message: "Internal server error",
     });
   }
 };
 
-/**
- * Seed initial Admin user and default workflows if database is fresh
- * POST /api/auth/seed
- */
 const seedInitialData = async (req, res) => {
   try {
     let admin = await User.findOne({ role: "admin" });
@@ -101,16 +241,17 @@ const seedInitialData = async (req, res) => {
       const passwordHash = await bcrypt.hash("admin123", 10);
       admin = await User.create({
         name: "Admin",
+        firstName: "Admin",
         email: "admin@hrplatform.com",
         passwordHash,
         role: "admin",
         isActive: true,
+        status: "active",
       });
       created = true;
     }
 
-    // Seed default offer workflow if missing
-    let offerWorkflow = await Workflow.findOne({ type: "offer" });
+    const offerWorkflow = await Workflow.findOne({ type: "offer" });
     if (!offerWorkflow) {
       await Workflow.create({
         name: "Standard Offer Approval Workflow",
@@ -126,8 +267,9 @@ const seedInitialData = async (req, res) => {
       });
     }
 
-    // Seed default letter template if missing
-    let letterTemplate = await LetterTemplate.findOne({ type: "appointment" });
+    const letterTemplate = await LetterTemplate.findOne({
+      type: "appointment",
+    });
     if (!letterTemplate) {
       await LetterTemplate.create({
         name: "Standard Appointment Letter",
@@ -140,7 +282,7 @@ const seedInitialData = async (req, res) => {
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: created
         ? "Initial Admin account and default data seeded successfully"
@@ -151,7 +293,8 @@ const seedInitialData = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("Seeding error:", error.message);
+    return res.status(500).json({
       success: false,
       message: "Seeding failed",
       error: error.message,
@@ -159,8 +302,22 @@ const seedInitialData = async (req, res) => {
   }
 };
 
+const getAdminData = (req, res) =>
+  res.status(200).json({
+    success: true,
+    message: "Authorization successful!",
+    data: {
+      userId: req.user.id || req.user._id,
+      email: req.user.email,
+      role: req.user.role,
+    },
+  });
+
 module.exports = {
-  login,
+  registerUser,
+  loginUser,
+  login: loginUser,
   getMe,
+  getAdminData,
   seedInitialData,
 };

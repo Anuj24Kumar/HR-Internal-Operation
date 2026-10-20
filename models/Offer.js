@@ -5,7 +5,11 @@ const offerSchema = new mongoose.Schema(
     candidateId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Candidate",
-      required: [true, "Candidate reference is required"],
+      index: true,
+    },
+    candidate: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
       index: true,
     },
     offerType: {
@@ -21,11 +25,12 @@ const offerSchema = new mongoose.Schema(
     },
     salary: {
       type: Number,
-      required: [true, "Salary/Stipend is required"],
+      required: [true, "Salary or stipend is required"],
+      min: 0,
     },
     joiningDate: {
       type: Date,
-      required: [true, "Joining date is required"],
+      required: true,
     },
     expiryDate: {
       type: Date,
@@ -33,17 +38,14 @@ const offerSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: {
-        values: [
-          "draft",
-          "pending_approval",
-          "sent",
-          "accepted",
-          "rejected",
-          "expired",
-        ],
-        message: "{VALUE} is not a valid offer status",
-      },
+      enum: [
+        "draft",
+        "pending_approval",
+        "sent",
+        "accepted",
+        "rejected",
+        "expired",
+      ],
       default: "draft",
       index: true,
     },
@@ -72,6 +74,4 @@ const offerSchema = new mongoose.Schema(
   }
 );
 
-const Offer = mongoose.model("Offer", offerSchema);
-
-module.exports = Offer;
+module.exports = mongoose.model("Offer", offerSchema);

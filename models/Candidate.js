@@ -48,6 +48,13 @@ const interviewRoundSchema = new mongoose.Schema(
 
 const candidateSchema = new mongoose.Schema(
   {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      unique: true,
+      sparse: true,
+      index: true,
+    },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -55,14 +62,14 @@ const candidateSchema = new mongoose.Schema(
     },
     name: {
       type: String,
-      required: [true, "Candidate name is required"],
       trim: true,
+      default: "",
     },
     email: {
       type: String,
-      required: [true, "Candidate email is required"],
       lowercase: true,
       trim: true,
+      default: "",
       index: true,
     },
     phone: {
@@ -72,7 +79,7 @@ const candidateSchema = new mongoose.Schema(
     },
     position: {
       type: String,
-      required: [true, "Position is required"],
+      required: [true, "Applied position is required"],
       trim: true,
     },
     department: {
@@ -85,17 +92,34 @@ const candidateSchema = new mongoose.Schema(
       trim: true,
       default: "Direct",
     },
+    applicationSource: {
+      type: String,
+      trim: true,
+      default: "Direct",
+    },
     resumeUrl: {
       type: String,
       default: null,
     },
+    appliedDate: {
+      type: Date,
+      default: Date.now,
+    },
     status: {
       type: String,
-      enum: {
-        values: ["applied", "screening", "interview", "selected", "rejected"],
-        message: "{VALUE} is not a valid candidate status",
-      },
-      default: "applied",
+      enum: [
+        "applied",
+        "screening",
+        "interview",
+        "selected",
+        "rejected",
+        "Applied",
+        "Screening",
+        "Interview",
+        "Selected",
+        "Rejected",
+      ],
+      default: "Applied",
       index: true,
     },
     selectedAs: {
@@ -134,6 +158,10 @@ const candidateSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    archived: {
+      type: Boolean,
+      default: false,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -145,6 +173,4 @@ const candidateSchema = new mongoose.Schema(
   }
 );
 
-const Candidate = mongoose.model("Candidate", candidateSchema);
-
-module.exports = Candidate;
+module.exports = mongoose.model("Candidate", candidateSchema);
