@@ -1,7 +1,7 @@
 const express = require('express');
 const controller = require('../../controllers/hiring-manager/hiringManagerController');
-const requireHiringManager = require('../../middlewares/hiring-manager/requireHiringManager');
-const { verifyToken } = require('../../middlewares/authMiddleware');
+const requireHiringManager = require('../../middleware/hiring-manager/requireHiringManager');
+const { verifyToken } = require('../../middleware/authMiddleware');
 
 const router = express.Router();
 

@@ -1,16 +1,16 @@
 const mongoose = require("mongoose");
 const fs = require("fs");
 const path = require("path");
-const Candidate = require("../models/Candidate");
-const User = require("../models/User");
-const Document = require("../models/Document");
-const Offer = require("../models/Offer");
-const AuditLogs = require("../models/AuditLogs");
+const Candidate = require("../../models/Candidate");
+const User = require("../../models/User");
+const Document = require("../../models/Document");
+const Offer = require("../../models/Offer");
+const AuditLogs = require("../../models/AuditLogs");
 
 const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
 const notArchived = { isArchived: false, archived: false };
 const uploadPath = (filename) =>
-  path.join(__dirname, "..", "uploads", "candidate-documents", path.basename(filename));
+  path.join(__dirname, "..", "..", "uploads", "candidate-documents", path.basename(filename));
 
 const cleanupUploadedFile = (req) => {
   if (!req.file?.filename) return;

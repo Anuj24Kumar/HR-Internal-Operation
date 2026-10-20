@@ -1,8 +1,8 @@
 const express = require('express');
 const controller = require('../../controllers/interviewer/interviewerController');
-const requireInterviewer = require('../../middlewares/interviewer/requireInterviewer');
-const { verifyToken } = require('../../middlewares/authMiddleware');
-const { requireRole } = require('../../middlewares/roleMiddleware');
+const requireInterviewer = require('../../middleware/interviewer/requireInterviewer');
+const { verifyToken } = require('../../middleware/authMiddleware');
+const { requireRole } = require('../../middleware/roleMiddleware');
 
 const router = express.Router();
 

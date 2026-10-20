@@ -1,16 +1,16 @@
 const express = require("express");
 const router = express.Router();
 
-const { verifyToken } = require("../middlewares/authMiddleware");
-const { requireAdmin } = require("../middlewares/roleMiddleware");
+const { verifyToken } = require("../../middleware/authMiddleware");
+const requireAdmin = require("../../middleware/admin/requireAdmin");
 
 // Separate controllers in admin folder
-const userController = require("../controllers/admin/userController");
-const workflowController = require("../controllers/admin/workflowController");
-const letterTemplateController = require("../controllers/admin/letterTemplateController");
-const auditController = require("../controllers/admin/auditController");
-const dashboardController = require("../controllers/admin/dashboardController");
-const searchController = require("../controllers/admin/searchController");
+const userController = require("../../controllers/admin/userController");
+const workflowController = require("../../controllers/admin/workflowController");
+const letterTemplateController = require("../../controllers/admin/letterTemplateController");
+const auditController = require("../../controllers/admin/auditController");
+const dashboardController = require("../../controllers/admin/dashboardController");
+const searchController = require("../../controllers/admin/searchController");
 
 // Health check endpoint (Public)
 router.get("/health", (req, res) => {

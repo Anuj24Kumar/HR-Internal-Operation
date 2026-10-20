@@ -1,4 +1,4 @@
-const { recordAuditLog, auditRoute } = require("../middlewares/auditMiddleware");
+const { recordAuditLog, auditRoute } = require("../middleware/auditMiddleware");
 
 module.exports = {
   recordAuditLog,

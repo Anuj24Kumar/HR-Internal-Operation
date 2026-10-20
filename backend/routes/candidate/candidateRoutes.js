@@ -1,9 +1,10 @@
 const express = require("express");
 const router = express.Router();
 
-const { protect } = require("../middleware/authMiddleware");
-const { authorize, authorizeRoles } = require("../middleware/roleMiddleware");
-const upload = require("../middleware/uploadMiddleware");
+const { protect } = require("../../middleware/authMiddleware");
+const { authorize } = require("../../middleware/roleMiddleware");
+const requireCandidate = require("../../middleware/candidate/requireCandidate");
+const upload = require("../../middleware/uploadMiddleware");
 const {
   createCandidate,
   getCandidates,
@@ -20,52 +21,52 @@ const {
   updateCandidateDocument,
   deleteCandidateDocument,
   getMyOffer,
-} = require("../controllers/candidateController");
+} = require("../../controllers/candidate/candidateController");
 
 router.get("/", protect, authorize("admin", "hr"), getCandidates);
 router.post("/", protect, authorize("hr"), createCandidate);
 router.get(
   "/application",
   protect,
-  authorizeRoles("candidate"),
+  requireCandidate,
   getMyApplication
 );
 router.get(
   "/profile",
   protect,
-  authorizeRoles("candidate"),
+  requireCandidate,
   getMyProfile
 );
 router.get(
   "/documents",
   protect,
-  authorizeRoles("candidate"),
+  requireCandidate,
   getMyDocuments
 );
 router.post(
   "/documents",
   protect,
-  authorizeRoles("candidate"),
+  requireCandidate,
   upload.single("document"),
   uploadCandidateDocument
 );
 router.patch(
   "/documents/:id",
   protect,
-  authorizeRoles("candidate"),
+  requireCandidate,
   upload.single("document"),
   updateCandidateDocument
 );
 router.delete(
   "/documents/:id",
   protect,
-  authorizeRoles("candidate"),
+  requireCandidate,
   deleteCandidateDocument
 );
 router.get(
   "/offer",
   protect,
-  authorizeRoles("candidate"),
+  requireCandidate,
   getMyOffer
 );
 

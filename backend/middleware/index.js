@@ -1,5 +1,7 @@
-const { verifyToken } = require("./authMiddleware");
+const { protect, verifyToken } = require("./authMiddleware");
 const {
+  authorize,
+  authorizeRoles,
   requireRole,
   requireAdmin,
   requireHR,
@@ -10,7 +12,10 @@ const {
 const { recordAuditLog, auditRoute } = require("./auditMiddleware");
 
 module.exports = {
+  protect,
   verifyToken,
+  authorize,
+  authorizeRoles,
   requireRole,
   requireAdmin,
   requireHR,

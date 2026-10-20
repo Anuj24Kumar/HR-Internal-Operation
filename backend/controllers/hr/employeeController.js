@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const Employee = require("../models/Employee");
+const Employee = require("../../models/Employee");
 
 const getEmployees = async (req, res) => {
   try {
@@ -158,7 +158,7 @@ const updateEmployee = async (req, res) => {
   }
 };
 
-const EmployeeHistory = require("../models/EmployeeHistory");
+const EmployeeHistory = require("../../models/EmployeeHistory");
 
 // POST: Add employee history
 const addEmployeeHistory = async (req, res) => {

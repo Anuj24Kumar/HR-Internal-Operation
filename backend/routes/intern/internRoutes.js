@@ -1,30 +1,30 @@
 const express = require("express");
 const router = express.Router();
 
-const { protect } = require("../middleware/authMiddleware");
-const { authorizeRoles } = require("../middleware/roleMiddleware");
-const upload = require("../middleware/uploadMiddleware");
+const { protect } = require("../../middleware/authMiddleware");
+const requireIntern = require("../../middleware/intern/requireIntern");
+const upload = require("../../middleware/uploadMiddleware");
 
 const {
   getMyInternProfile,
-} = require("../controllers/Intern/internController");
+} = require("../../controllers/Intern/internController");
 
 const {
   getMyOnboarding,
   completeOnboardingTask,
-} = require("../controllers/Intern/onboardingController");
+} = require("../../controllers/Intern/onboardingController");
 
 const {
   getMyDocuments,
   uploadInternDocument,
   updateInternDocument,
-} = require("../controllers/Intern/internDocumentController");
+} = require("../../controllers/Intern/internDocumentController");
 
 // 1. Get intern profile
 router.get(
   "/profile",
   protect,
-  authorizeRoles("intern"),
+  requireIntern,
   getMyInternProfile
 );
 
@@ -32,7 +32,7 @@ router.get(
 router.get(
   "/onboarding",
   protect,
-  authorizeRoles("intern"),
+  requireIntern,
   getMyOnboarding
 );
 
@@ -40,7 +40,7 @@ router.get(
 router.patch(
   "/onboarding/tasks/:taskId",
   protect,
-  authorizeRoles("intern"),
+  requireIntern,
   completeOnboardingTask
 );
 
@@ -48,7 +48,7 @@ router.patch(
 router.get(
   "/documents",
   protect,
-  authorizeRoles("intern"),
+  requireIntern,
   getMyDocuments
 );
 
@@ -56,7 +56,7 @@ router.get(
 router.post(
   "/documents",
   protect,
-  authorizeRoles("intern"),
+  requireIntern,
   upload.single("document"),
   uploadInternDocument
 );
@@ -65,7 +65,7 @@ router.post(
 router.patch(
   "/documents/:id",
   protect,
-  authorizeRoles("intern"),
+  requireIntern,
   upload.single("document"),
   updateInternDocument
 );

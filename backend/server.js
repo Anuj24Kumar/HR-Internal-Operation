@@ -5,13 +5,13 @@ require("dotenv").config();
 
 const connectDB = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
-const adminRoutes = require("./routes/adminRoutes");
+const adminRoutes = require("./routes/admin/adminRoutes");
 const interviewerRoutes = require("./routes/interviewer/interviewerRoutes");
 const hiringManagerRoutes = require("./routes/hiring-manager/hiringManagerRoutes");
-const candidateRoutes = require("./routes/candidateRoutes");
+const candidateRoutes = require("./routes/candidate/candidateRoutes");
 const signRoutes = require("./routes/signRoutes");
-const internRoutes = require("./routes/internRoutes");
-const employeeRoutes = require("./routes/employeeRoutes");
+const internRoutes = require("./routes/intern/internRoutes");
+const employeeRoutes = require("./routes/employee/employeeRoutes");
 const interviewRoutes = require("./routes/interviewRoutes");
 const offerRoutes = require("./routes/offerRoutes");
 const letterRoutes = require("./routes/letterRoutes");

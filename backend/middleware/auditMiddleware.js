@@ -44,9 +44,7 @@ const recordAuditLog = async ({
  */
 const auditRoute = (moduleName, actionType) => {
   return (req, res, next) => {
-    // Listen for response completion
     res.on("finish", async () => {
-      // Only log successful mutation HTTP status codes (2xx)
       if (res.statusCode >= 200 && res.statusCode < 300) {
         const entityId = req.params.id || req.body._id || null;
         await recordAuditLog({
