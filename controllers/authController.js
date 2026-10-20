@@ -1,23 +1,39 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const Candidate = require("../models/Candidate");
 
 // ==========================================
-// REGISTER USER
+// REGISTER USER + CREATE CANDIDATE APPLICATION
 // ==========================================
 const registerUser = async (req, res) => {
+  let createdUser = null;
+
   try {
-    const { firstName, lastName, email, password, phone } = req.body;
+    const {
+      firstName,
+      lastName,
+      email,
+      password,
+      phone,
+      position,
+    } = req.body;
 
     // Validate required fields
-    if (!firstName || !lastName || !email || !password) {
+    if (
+      !firstName?.trim() ||
+      !lastName?.trim() ||
+      !email?.trim() ||
+      !password ||
+      !position?.trim()
+    ) {
       return res.status(400).json({
         success: false,
-        message: "First name, last name, email and password are required",
+        message:
+          "First name, last name, email, password and position are required",
       });
     }
 
-    // Validate password
     if (password.length < 8) {
       return res.status(400).json({
         success: false,
@@ -25,8 +41,7 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // Normalize email
-    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedEmail = email.trim().toLowerCase();
 
     // Check existing user
     const existingUser = await User.findOne({
@@ -44,30 +59,54 @@ const registerUser = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Create user
-    const user = await User.create({
-      firstName,
-      lastName,
+    createdUser = await User.create({
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
       email: normalizedEmail,
       password: hashedPassword,
-      phone,
+      phone: phone?.trim() || "",
       role: "candidate",
+    });
+
+    // Create candidate application
+    const candidate = await Candidate.create({
+      user: createdUser._id,
+      position: position.trim(),
+      applicationSource: "Direct",
+      status: "Applied",
     });
 
     return res.status(201).json({
       success: true,
       message: "User registered successfully",
       user: {
-        id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        status: user.status,
-        createdAt: user.createdAt,
+        id: createdUser._id,
+        firstName: createdUser.firstName,
+        lastName: createdUser.lastName,
+        email: createdUser.email,
+        phone: createdUser.phone,
+        role: createdUser.role,
+        status: createdUser.status,
+        createdAt: createdUser.createdAt,
+      },
+      application: {
+        id: candidate._id,
+        position: candidate.position,
+        applicationSource: candidate.applicationSource,
+        appliedDate: candidate.appliedDate,
+        status: candidate.status,
       },
     });
   } catch (error) {
+    // Clean up user if application creation fails
+    if (createdUser?._id) {
+      try {
+        await User.findByIdAndDelete(createdUser._id);
+      } catch (cleanupError) {
+        console.error("User cleanup error:", cleanupError.message);
+      }
+    }
+
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
@@ -91,16 +130,14 @@ const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validate required fields
-    if (!email || !password) {
+    if (!email?.trim() || !password) {
       return res.status(400).json({
         success: false,
         message: "Email and password are required",
       });
     }
 
-    // Find user and include password
-    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedEmail = email.trim().toLowerCase();
 
     const user = await User.findOne({
       email: normalizedEmail,
@@ -113,7 +150,6 @@ const loginUser = async (req, res) => {
       });
     }
 
-    // Check account status
     if (user.status !== "active") {
       return res.status(403).json({
         success: false,
@@ -121,7 +157,6 @@ const loginUser = async (req, res) => {
       });
     }
 
-    // Compare password
     const isPasswordValid = await bcrypt.compare(
       password,
       user.password
@@ -134,12 +169,10 @@ const loginUser = async (req, res) => {
       });
     }
 
-    // Ensure JWT secret is configured
     if (!process.env.JWT_SECRET) {
       throw new Error("JWT_SECRET is not configured");
     }
 
-    // Generate JWT
     const token = jwt.sign(
       {
         userId: user._id.toString(),
@@ -151,7 +184,6 @@ const loginUser = async (req, res) => {
       }
     );
 
-    // Update last login
     user.lastLogin = new Date();
     await user.save();
 
@@ -178,8 +210,9 @@ const loginUser = async (req, res) => {
   }
 };
 
-
-// Get Current Logged-in User
+// ==========================================
+// GET CURRENT LOGGED-IN USER
+// ==========================================
 const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -216,7 +249,9 @@ const getMe = async (req, res) => {
   }
 };
 
-// Test Admin/HR Authorization
+// ==========================================
+// TEST ADMIN/HR AUTHORIZATION
+// ==========================================
 const getAdminData = async (req, res) => {
   return res.status(200).json({
     success: true,
@@ -229,7 +264,9 @@ const getAdminData = async (req, res) => {
   });
 };
 
-// Export both functions
+// ==========================================
+// EXPORT AUTH CONTROLLERS
+// ==========================================
 module.exports = {
   registerUser,
   loginUser,
