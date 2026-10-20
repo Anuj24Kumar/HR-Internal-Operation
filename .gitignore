@@ -4,8 +4,6 @@ node_modules/
 # Environment variables and secrets
 .env
 .env.*
-
-# Allow an example environment file
 !.env.example
 
 # Uploaded files
