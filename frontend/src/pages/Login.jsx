@@ -1,14 +1,15 @@
 import { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { apiRequest } from "../api.js";
 import { roles } from "../roles.js";
+import RoleEntry from "../roles/RoleEntry.jsx";
 
 export default function Login() {
-  const navigate = useNavigate();
   const location = useLocation();
   const [form, setForm] = useState({ email: "", password: "", role: "candidate" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [destinationRole, setDestinationRole] = useState(null);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -28,14 +29,16 @@ export default function Login() {
         throw new Error(`This account belongs to the ${user.role} role. Select that role to continue.`);
       }
       localStorage.setItem("hr-auth-token", token);
-      navigate(`/${user.role === "hiring_manager" ? "hiring-manager" : user.role}`, {
-        replace: true,
-      });
+      setDestinationRole(user.role);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
       setLoading(false);
     }
+  }
+
+  if (destinationRole) {
+    return <RoleEntry role={destinationRole} />;
   }
 
   return (
