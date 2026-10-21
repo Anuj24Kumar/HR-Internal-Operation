@@ -39,6 +39,7 @@ app.use("/api/v1/candidates", candidateRoutes);
 app.use("/api/sign", signRoutes);
 app.use("/api/intern", internRoutes);
 app.use("/api/employee", employeeRoutes);
+app.use("/api/v1/employee", employeeRoutes);
 app.use("/api/v1/employees", employeeRoutes);
 app.use("/api/v1/offers", offerRoutes);
 app.use("/api/v1/interviews", interviewRoutes);

@@ -5,6 +5,7 @@ import { apiRequest } from "../api.js";
 export default function useRoleAuth(role) {
   const navigate = useNavigate();
   const [message, setMessage] = useState("Checking account...");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("hr-auth-token");
@@ -21,6 +22,7 @@ export default function useRoleAuth(role) {
           throw new Error("The signed-in account does not match this role page.");
         }
         setMessage(`Signed in as ${result.user.name || result.user.email}.`);
+        setIsAuthenticated(true);
       })
       .catch(() => {
         localStorage.removeItem("hr-auth-token");
@@ -33,5 +35,5 @@ export default function useRoleAuth(role) {
     navigate("/login", { replace: true });
   }
 
-  return { message, logout };
+  return { message, logout, isAuthenticated };
 }
