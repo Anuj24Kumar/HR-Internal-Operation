@@ -6,22 +6,27 @@ export default function useRoleAuth(role) {
   const navigate = useNavigate();
   const [message, setMessage] = useState("Checking account...");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(() => localStorage.getItem("hr-auth-token") || "");
 
   useEffect(() => {
-    const token = localStorage.getItem("hr-auth-token");
-    if (!token) {
+    const currentToken = localStorage.getItem("hr-auth-token");
+    if (!currentToken) {
       navigate("/login", { replace: true });
       return;
     }
 
     apiRequest("/auth/me", {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${currentToken}` },
     })
       .then((result) => {
-        if (result.user?.role !== role) {
+        const u = result.user || result.data?.user;
+        if (!u || u.role !== role) {
           throw new Error("The signed-in account does not match this role page.");
         }
-        setMessage(`Signed in as ${result.user.name || result.user.email}.`);
+        setUser(u);
+        setToken(currentToken);
+        setMessage(`Signed in as ${u.name || u.email}.`);
         setIsAuthenticated(true);
       })
       .catch(() => {
@@ -35,5 +40,5 @@ export default function useRoleAuth(role) {
     navigate("/login", { replace: true });
   }
 
-  return { message, logout, isAuthenticated };
+  return { message, logout, isAuthenticated, user, token };
 }
