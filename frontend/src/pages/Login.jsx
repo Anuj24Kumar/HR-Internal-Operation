@@ -10,7 +10,8 @@ import {
   Sparkles, 
   ShieldCheck, 
   AlertCircle, 
-  CheckCircle2 
+  CheckCircle2,
+  KeyRound
 } from "lucide-react";
 import { apiRequest } from "../api.js";
 import { roles } from "../roles.js";
@@ -19,9 +20,9 @@ import RoleEntry from "../roles/RoleEntry.jsx";
 export default function Login() {
   const location = useLocation();
   const [form, setForm] = useState({ 
-    email: "", 
-    password: "", 
-    role: "hiring_manager" 
+    email: "admin@company.com", 
+    password: "Admin@12345", 
+    role: "admin" 
   });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -174,23 +175,58 @@ export default function Login() {
             </div>
           </div>
 
-          {/* Quick Demo Credentials */}
+          {/* Default Admin Credentials Notice & Quick Access */}
           <div className="demo-credentials-box">
             <div className="demo-title">
-              <Sparkles size={13} style={{ color: "#6366f1" }} />
-              <span>Quick Test Access (Pre-seeded Accounts)</span>
+              <KeyRound size={13} style={{ color: "#6366f1" }} />
+              <span>Default Credentials (Real Database Accounts)</span>
             </div>
+            
+            <div style={{
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+              borderRadius: "6px",
+              padding: "8px 10px",
+              fontSize: "12px",
+              color: "#334155",
+              marginBottom: "8px"
+            }}>
+              <strong>Default Admin:</strong> <code>admin@company.com</code> | Password: <code>Admin@12345</code>
+            </div>
+
             <div className="demo-actions">
               <button
                 type="button"
-                className="demo-chip"
+                className={`demo-chip ${form.role === "admin" ? "active" : ""}`}
+                style={{
+                  background: form.role === "admin" ? "#e0e7ff" : undefined,
+                  borderColor: form.role === "admin" ? "#6366f1" : undefined,
+                  fontWeight: form.role === "admin" ? 600 : undefined
+                }}
+                onClick={() => setDemoCredentials("admin", "admin@company.com", "Admin@12345")}
+              >
+                Admin (System Admin)
+              </button>
+              <button
+                type="button"
+                className={`demo-chip ${form.role === "hiring_manager" ? "active" : ""}`}
+                style={{
+                  background: form.role === "hiring_manager" ? "#e0e7ff" : undefined,
+                  borderColor: form.role === "hiring_manager" ? "#6366f1" : undefined,
+                  fontWeight: form.role === "hiring_manager" ? 600 : undefined
+                }}
                 onClick={() => setDemoCredentials("hiring_manager", "manager@company.com", "Manager@123")}
               >
                 Hiring Manager (Sarah)
               </button>
               <button
                 type="button"
-                className="demo-chip"
+                className={`demo-chip ${form.role === "interviewer" ? "active" : ""}`}
+                style={{
+                  background: form.role === "interviewer" ? "#e0e7ff" : undefined,
+                  borderColor: form.role === "interviewer" ? "#6366f1" : undefined,
+                  fontWeight: form.role === "interviewer" ? 600 : undefined
+                }}
                 onClick={() => setDemoCredentials("interviewer", "interviewer@company.com", "Interviewer@123")}
               >
                 Interviewer (David)
