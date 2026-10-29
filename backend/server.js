@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-require("dotenv").config();
+require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
 
 const connectDB = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
@@ -42,6 +42,9 @@ app.use("/api/employee", employeeRoutes);
 app.use("/api/v1/employees", employeeRoutes);
 app.use("/api/v1/offers", offerRoutes);
 app.use("/api/v1/interviews", interviewRoutes);
+app.get("/api/v1/route-test", (req, res) => {
+  res.json({ success: true, message: "Main server route works" });
+});
 app.use("/api/v1/letters", letterRoutes);
 app.use("/api/v1/documents", documentRoutes);
 app.use("/api/v1/onboarding", onboardingRoutes);

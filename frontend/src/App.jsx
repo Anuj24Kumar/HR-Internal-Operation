@@ -18,7 +18,7 @@ export default function App() {
       <Route path="/candidate" element={<CandidateEntry />} />
       <Route path="/intern" element={<InternEntry />} />
       <Route path="/employee" element={<EmployeeEntry />} />
-      <Route path="/hr" element={<HrEntry />} />
+     <Route path="/hr/*" element={<HrEntry />} />
       <Route path="/hiring-manager" element={<HiringManagerEntry />} />
       <Route path="/interviewer" element={<InterviewerEntry />} />
       <Route path="/admin" element={<AdminEntry />} />
