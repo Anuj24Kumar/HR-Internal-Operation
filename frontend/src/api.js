@@ -20,21 +20,32 @@ export async function apiRequest(endpoint, options = {}) {
     ...options,
     headers,
   });
+  const contentType = response.headers.get("content-type") || "";
 
-  const responseText = await response.text();
-  let result = {};
-
-  if (responseText) {
-    try {
-      result = JSON.parse(responseText);
-    } catch {
-      throw new Error("The server returned an invalid response.");
+  if (!contentType.includes("application/json")) {
+    if (response.ok) {
+      return response;
     }
+
+    const message = await response.text();
+    const error = new Error(message || `Request failed (${response.status})`);
+    error.status = response.status;
+    throw error;
   }
 
-  if (!response.ok || result.success === false) {
+  let result;
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error("The server returned an invalid response.");
+  }
+
+  if (!response.ok || result?.success === false) {
     const error = new Error(
-      result.message || result.error?.message || result.error || "The request failed."
+      result.message ||
+        result.error?.message ||
+        result.error ||
+        `Request failed (${response.status})`
     );
     error.status = response.status;
     throw error;
