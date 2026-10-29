@@ -1,17 +1,13 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { 
-  Building2, 
   Mail, 
   Lock, 
   Eye, 
   EyeOff, 
   ArrowRight, 
-  Sparkles, 
-  ShieldCheck, 
   AlertCircle, 
-  CheckCircle2,
-  KeyRound
+  CheckCircle2
 } from "lucide-react";
 import { apiRequest } from "../api.js";
 import { roles } from "../roles.js";
@@ -63,15 +59,6 @@ export default function Login() {
     }
   }
 
-  function setDemoCredentials(role, email, pass) {
-    setForm({
-      role,
-      email,
-      password: pass
-    });
-    setError("");
-  }
-
   if (destinationRole) {
     return <RoleEntry role={destinationRole} />;
   }
@@ -80,18 +67,7 @@ export default function Login() {
     <main className="auth-page">
       <div className="auth-card">
         <header className="auth-header">
-          <div className="auth-logo-badge">
-            <svg className="auth-logo-icon" viewBox="0 0 32 36" fill="none" aria-hidden="true">
-              <path d="M3 3h13c9 0 14 5 14 12s-5 12-14 12h-5v7H3V3Z" fill="currentColor" />
-              <path d="M11 11h5c3 0 5 1 5 4s-2 4-5 4h-5v-8Z" fill="#111827" />
-              <path d="M3 27h8v7H3z" fill="#818cf8" />
-            </svg>
-            <span>PeopleOps</span>
-            <span style={{ opacity: 0.5 }}>•</span>
-            <span style={{ color: "#9ca3af", fontWeight: 400 }}>Acme Corp</span>
-          </div>
-          <h1 className="auth-title">Welcome back</h1>
-          <p className="auth-subtitle">Sign in to your PeopleOps workspace to continue</p>
+          <h1 className="auth-title">Login Page</h1>
         </header>
 
         {location.state?.message && (
@@ -111,22 +87,22 @@ export default function Login() {
         <form className="auth-form" onSubmit={handleSubmit}>
           {/* Role Selection */}
           <div className="form-group">
-            <label className="form-label">
-              <span>Select Your Role</span>
-              <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Workspace Context</span>
-            </label>
-            <div className="role-pills-container">
+            <label className="form-label" htmlFor="login-role">Select Your Role</label>
+            <select
+              id="login-role"
+              className="form-select"
+              value={form.role}
+              onChange={(event) => setForm({ ...form, role: event.target.value })}
+            >
               {roles.map(([value, label]) => (
-                <button
+                <option
                   key={value}
-                  type="button"
-                  className={`role-pill-btn ${form.role === value ? "active" : ""}`}
-                  onClick={() => setForm({ ...form, role: value })}
+                  value={value}
                 >
                   {label}
-                </button>
+                </option>
               ))}
-            </div>
+            </select>
           </div>
 
           {/* Email input */}
@@ -171,65 +147,6 @@ export default function Login() {
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-          </div>
-
-          {/* Default Admin Credentials Notice & Quick Access */}
-          <div className="demo-credentials-box">
-            <div className="demo-title">
-              <KeyRound size={13} style={{ color: "#6366f1" }} />
-              <span>Default Credentials (Real Database Accounts)</span>
-            </div>
-            
-            <div style={{
-              background: "#f8fafc",
-              border: "1px solid #e2e8f0",
-              borderRadius: "6px",
-              padding: "8px 10px",
-              fontSize: "12px",
-              color: "#334155",
-              marginBottom: "8px"
-            }}>
-              <strong>Default Admin:</strong> <code>admin@company.com</code> | Password: <code>Admin@12345</code>
-            </div>
-
-            <div className="demo-actions">
-              <button
-                type="button"
-                className={`demo-chip ${form.role === "admin" ? "active" : ""}`}
-                style={{
-                  background: form.role === "admin" ? "#e0e7ff" : undefined,
-                  borderColor: form.role === "admin" ? "#6366f1" : undefined,
-                  fontWeight: form.role === "admin" ? 600 : undefined
-                }}
-                onClick={() => setDemoCredentials("admin", "admin@company.com", "Admin@12345")}
-              >
-                Admin (System Admin)
-              </button>
-              <button
-                type="button"
-                className={`demo-chip ${form.role === "hiring_manager" ? "active" : ""}`}
-                style={{
-                  background: form.role === "hiring_manager" ? "#e0e7ff" : undefined,
-                  borderColor: form.role === "hiring_manager" ? "#6366f1" : undefined,
-                  fontWeight: form.role === "hiring_manager" ? 600 : undefined
-                }}
-                onClick={() => setDemoCredentials("hiring_manager", "manager@company.com", "Manager@123")}
-              >
-                Hiring Manager (Sarah)
-              </button>
-              <button
-                type="button"
-                className={`demo-chip ${form.role === "interviewer" ? "active" : ""}`}
-                style={{
-                  background: form.role === "interviewer" ? "#e0e7ff" : undefined,
-                  borderColor: form.role === "interviewer" ? "#6366f1" : undefined,
-                  fontWeight: form.role === "interviewer" ? 600 : undefined
-                }}
-                onClick={() => setDemoCredentials("interviewer", "interviewer@company.com", "Interviewer@123")}
-              >
-                Interviewer (David)
               </button>
             </div>
           </div>

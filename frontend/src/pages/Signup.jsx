@@ -1,16 +1,13 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { 
-  Building2, 
   User, 
   Mail, 
   Phone, 
-  Briefcase, 
   Lock, 
   Eye, 
   EyeOff, 
   ArrowRight, 
-  CheckCircle2, 
   AlertCircle 
 } from "lucide-react";
 import { apiRequest } from "../api.js";
@@ -22,7 +19,6 @@ export default function Signup() {
     lastName: "",
     email: "",
     phone: "",
-    position: "",
     password: "",
   });
   const [showPassword, setShowPassword] = useState(false);
@@ -42,7 +38,7 @@ export default function Signup() {
           lastName: form.lastName.trim(),
           email: form.email.trim(),
           phone: form.phone.trim(),
-          position: form.position.trim(),
+          position: "Candidate",
           password: form.password,
         }),
       });
@@ -66,18 +62,7 @@ export default function Signup() {
     <main className="auth-page">
       <div className="auth-card" style={{ maxWidth: "520px" }}>
         <header className="auth-header">
-          <div className="auth-logo-badge">
-            <svg className="auth-logo-icon" viewBox="0 0 32 36" fill="none" aria-hidden="true">
-              <path d="M3 3h13c9 0 14 5 14 12s-5 12-14 12h-5v7H3V3Z" fill="currentColor" />
-              <path d="M11 11h5c3 0 5 1 5 4s-2 4-5 4h-5v-8Z" fill="#111827" />
-              <path d="M3 27h8v7H3z" fill="#818cf8" />
-            </svg>
-            <span>PeopleOps</span>
-            <span style={{ opacity: 0.5 }}>•</span>
-            <span style={{ color: "#9ca3af", fontWeight: 400 }}>Acme Careers</span>
-          </div>
-          <h1 className="auth-title">Candidate registration</h1>
-          <p className="auth-subtitle">Create your application profile to track interviews & offers</p>
+          <h1 className="auth-title">SignUp Page</h1>
         </header>
 
         {error && (
@@ -158,23 +143,6 @@ export default function Signup() {
             </div>
           </div>
 
-          {/* Position field */}
-          <div className="form-group">
-            <label className="form-label" htmlFor="signup-position">Position applying for</label>
-            <div className="input-wrapper">
-              <Briefcase className="input-icon-left" size={16} />
-              <input
-                id="signup-position"
-                name="position"
-                placeholder="e.g. Senior Frontend Engineer"
-                required
-                className="form-input input-with-left-icon"
-                value={form.position}
-                onChange={updateField}
-              />
-            </div>
-          </div>
-
           {/* Password field */}
           <div className="form-group">
             <label className="form-label" htmlFor="signup-password">
@@ -204,10 +172,6 @@ export default function Signup() {
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
-          </div>
-
-          <div style={{ fontSize: "12px", color: "var(--muted-foreground)", lineHeight: "1.4" }}>
-            Note: Public registration creates a candidate portal account. Employee, Hiring Manager, and Interviewer accounts are provisioned by enterprise administration.
           </div>
 
           <button type="submit" className="auth-btn-primary" disabled={loading}>
