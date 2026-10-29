@@ -1,10 +1,18 @@
-
 import { useEffect, useRef, useState } from "react";
 import {
   getMyDocuments,
+  uploadMyDocument,
+  deleteMyDocument,
 } from "../services/candidateService.js";
-import { apiRequest } from "../../../api.js";
 import EmptyState from "../components/EmptyState.jsx";
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
+
+const ALLOWED_FILE_TYPES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+];
 
 function formatDate(value) {
   if (!value) return "—";
@@ -44,14 +52,22 @@ function StatusBadge({ status }) {
 
   let classes = "bg-amber-50 text-amber-700";
 
-  if (["approved", "verified", "accepted"].includes(normalized)) {
+  if (
+    ["approved", "verified", "accepted", "uploaded"].includes(
+      normalized
+    )
+  ) {
     classes = "bg-emerald-50 text-emerald-700";
-  } else if (["rejected", "declined"].includes(normalized)) {
+  } else if (
+    ["rejected", "declined"].includes(normalized)
+  ) {
     classes = "bg-red-50 text-red-700";
   }
 
   return (
-    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${classes}`}>
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${classes}`}
+    >
       {status}
     </span>
   );
@@ -63,8 +79,11 @@ export default function MyDocuments() {
   const [documents, setDocuments] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const [documentType, setDocumentType] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -74,6 +93,7 @@ export default function MyDocuments() {
       setError("");
 
       const result = await getMyDocuments();
+
       setDocuments(getDocuments(result));
     } catch (err) {
       setError(err.message || "Unable to load documents.");
@@ -86,46 +106,75 @@ export default function MyDocuments() {
     loadDocuments();
   }, []);
 
-  async function handleUpload(event) {
-    event.preventDefault();
+  function handleFileChange(event) {
+    const file = event.target.files?.[0] || null;
 
-    if (!selectedFile) {
-      setError("Please select a document first.");
+    setError("");
+    setSuccess("");
+
+    if (!file) {
+      setSelectedFile(null);
       return;
     }
 
-    if (!documentType.trim()) {
-      setError("Please enter the document type.");
+    if (file.size > MAX_FILE_SIZE) {
+      setError("File size must be 5 MB or less.");
+
+      event.target.value = "";
+      setSelectedFile(null);
+
+      return;
+    }
+
+    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+      setError("Only PDF, JPG, JPEG and PNG files are allowed.");
+
+      event.target.value = "";
+      setSelectedFile(null);
+
+      return;
+    }
+
+    setSelectedFile(file);
+  }
+
+  async function handleUpload(event) {
+    event.preventDefault();
+
+    setError("");
+    setSuccess("");
+
+    if (!documentType) {
+      setError("Please select a document type.");
+      return;
+    }
+
+    if (!selectedFile) {
+      setError("Please select a file.");
+      return;
+    }
+
+    if (selectedFile.size > MAX_FILE_SIZE) {
+      setError("File size must be 5 MB or less.");
       return;
     }
 
     try {
       setUploading(true);
-      setError("");
-      setSuccess("");
 
       const formData = new FormData();
+
+      // IMPORTANT: Backend candidate route expects "document"
       formData.append("document", selectedFile);
 
-      // Backend controller ke required field ke according
-      // document type/name field adjust karna pad sakta hai.
-      formData.append("documentType", documentType.trim());
+      formData.append("documentType", documentType);
+      formData.append("documentName", selectedFile.name);
 
-      const token = localStorage.getItem("hr-auth-token");
-
-      if (!token) {
-        throw new Error("Please log in again.");
-      }
-
-      await apiRequest("/candidates/documents", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
+      // Candidate-specific API
+      await uploadMyDocument(formData);
 
       setSuccess("Document uploaded successfully.");
+
       setSelectedFile(null);
       setDocumentType("");
 
@@ -142,27 +191,27 @@ export default function MyDocuments() {
   }
 
   async function handleDelete(documentId) {
-    if (!window.confirm("Are you sure you want to delete this document?")) {
-      return;
-    }
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this document?"
+    );
+
+    if (!confirmed) return;
 
     try {
+      setDeletingId(documentId);
       setError("");
       setSuccess("");
 
-      const token = localStorage.getItem("hr-auth-token");
-
-      await apiRequest(`/candidates/documents/${documentId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      // Candidate-specific delete API
+      await deleteMyDocument(documentId);
 
       setSuccess("Document deleted successfully.");
+
       await loadDocuments();
     } catch (err) {
       setError(err.message || "Unable to delete document.");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -183,17 +232,24 @@ export default function MyDocuments() {
       </header>
 
       {error && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+        >
           {error}
         </div>
       )}
 
       {success && (
-        <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+        <div
+          role="status"
+          className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700"
+        >
           {success}
         </div>
       )}
 
+      {/* Upload Document */}
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">
           Upload a document
@@ -203,25 +259,50 @@ export default function MyDocuments() {
           Select a file and provide its document type.
         </p>
 
-        <form onSubmit={handleUpload} className="mt-5 grid gap-4 md:grid-cols-3">
+        <form
+          onSubmit={handleUpload}
+          className="mt-5 grid gap-4 md:grid-cols-3"
+        >
           <label className="grid gap-2 text-sm font-medium text-slate-700">
             Document type
-            <input
+
+            <select
               value={documentType}
-              onChange={(event) => setDocumentType(event.target.value)}
-              placeholder="e.g. Resume"
+              onChange={(event) =>
+                setDocumentType(event.target.value)
+              }
+              required
               className="rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            />
+            >
+              <option value="">Select document type</option>
+              <option value="resume">Resume</option>
+              <option value="aadhaar">Aadhaar Card</option>
+              <option value="pan">PAN Card</option>
+              <option value="educational_certificate">
+                Educational Certificate
+              </option>
+              <option value="experience_letter">
+                Experience Letter
+              </option>
+              <option value="other">Other</option>
+            </select>
           </label>
 
           <label className="grid gap-2 text-sm font-medium text-slate-700">
             Choose file
+
             <input
               ref={fileRef}
               type="file"
-              onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
+              accept=".pdf,.jpg,.jpeg,.png"
+              onChange={handleFileChange}
+              required
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
+
+            <span className="text-xs font-normal text-slate-500">
+              PDF, JPG, JPEG or PNG — Max 5 MB
+            </span>
           </label>
 
           <div className="flex items-end">
@@ -236,12 +317,14 @@ export default function MyDocuments() {
         </form>
       </section>
 
+      {/* Uploaded Documents */}
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">
               Uploaded Documents
             </h2>
+
             <p className="mt-1 text-sm text-slate-500">
               {documents.length} document(s)
             </p>
@@ -250,9 +333,10 @@ export default function MyDocuments() {
           <button
             type="button"
             onClick={loadDocuments}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+            disabled={loading}
+            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-60"
           >
-            Refresh
+            {loading ? "Refreshing..." : "Refresh"}
           </button>
         </div>
 
@@ -270,10 +354,21 @@ export default function MyDocuments() {
             <table className="w-full min-w-[650px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="px-6 py-4 font-semibold">Document</th>
-                  <th className="px-6 py-4 font-semibold">Uploaded</th>
-                  <th className="px-6 py-4 font-semibold">Status</th>
-                  <th className="px-6 py-4 font-semibold">Action</th>
+                  <th className="px-6 py-4 font-semibold">
+                    Document
+                  </th>
+
+                  <th className="px-6 py-4 font-semibold">
+                    Uploaded
+                  </th>
+
+                  <th className="px-6 py-4 font-semibold">
+                    Status
+                  </th>
+
+                  <th className="px-6 py-4 font-semibold">
+                    Action
+                  </th>
                 </tr>
               </thead>
 
@@ -282,12 +377,20 @@ export default function MyDocuments() {
                   const status = getStatus(document);
                   const id = document._id || document.id;
 
+                  const fileUrl =
+                    document.fileUrl ||
+                    document.url ||
+                    document.path;
+
                   return (
-                    <tr key={id} className="hover:bg-slate-50/70">
+                    <tr
+                      key={id}
+                      className="hover:bg-slate-50/70"
+                    >
                       <td className="px-6 py-4">
                         <p className="font-medium text-slate-900">
-                          {document.name ||
-                            document.documentName ||
+                          {document.documentName ||
+                            document.originalName ||
                             document.documentType ||
                             "Document"}
                         </p>
@@ -295,13 +398,15 @@ export default function MyDocuments() {
                         <p className="mt-1 text-xs text-slate-500">
                           {document.originalName ||
                             document.fileName ||
-                            document.filename ||
                             "Uploaded file"}
                         </p>
                       </td>
 
                       <td className="px-6 py-4 text-slate-600">
-                        {formatDate(document.createdAt || document.uploadedAt)}
+                        {formatDate(
+                          document.createdAt ||
+                            document.uploadedAt
+                        )}
                       </td>
 
                       <td className="px-6 py-4">
@@ -310,9 +415,9 @@ export default function MyDocuments() {
 
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          {(document.fileUrl || document.url || document.path) && (
+                          {fileUrl && (
                             <a
-                              href={document.fileUrl || document.url || document.path}
+                              href={fileUrl}
                               target="_blank"
                               rel="noreferrer"
                               className="font-medium text-blue-600 hover:text-blue-800"
@@ -325,9 +430,12 @@ export default function MyDocuments() {
                             <button
                               type="button"
                               onClick={() => handleDelete(id)}
-                              className="font-medium text-red-600 hover:text-red-800"
+                              disabled={deletingId === id}
+                              className="font-medium text-red-600 hover:text-red-800 disabled:opacity-60"
                             >
-                              Delete
+                              {deletingId === id
+                                ? "Deleting..."
+                                : "Delete"}
                             </button>
                           )}
                         </div>
@@ -343,4 +451,3 @@ export default function MyDocuments() {
     </div>
   );
 }
-

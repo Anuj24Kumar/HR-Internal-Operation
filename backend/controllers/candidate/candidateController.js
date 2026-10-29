@@ -340,47 +340,94 @@ const getMyDocuments = async (req, res) => {
 
 const uploadCandidateDocument = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: "Please upload a document" });
-    }
     const { documentType, documentName } = req.body;
-    const types = ["resume", "aadhaar", "pan", "educational_certificate", "experience_letter", "other"];
-    if (typeof documentName !== "string" || !documentName.trim() || !types.includes(documentType)) {
-      cleanupUploadedFile(req);
+
+    const types = [
+      "resume",
+      "aadhaar",
+      "pan",
+      "educational_certificate",
+      "experience_letter",
+      "other",
+    ];
+
+    // Check uploaded file
+    if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: "A valid document type and document name are required",
+        message: "Please upload a document.",
       });
     }
+
+    // Validate document type and name
+    if (
+      typeof documentName !== "string" ||
+      !documentName.trim() ||
+      !types.includes(documentType)
+    ) {
+      cleanupUploadedFile(req);
+
+      return res.status(400).json({
+        success: false,
+        message: "Invalid document type or document name.",
+      });
+    }
+
+    // Find candidate belonging to logged-in user
+    const candidate = await Candidate.findOne({
+      user: req.user.id,
+    });
+
+    if (!candidate) {
+      cleanupUploadedFile(req);
+
+      return res.status(404).json({
+        success: false,
+        message: "Candidate profile not found.",
+      });
+    }
+
+    // Create document in MongoDB
     const document = await Document.create({
       user: req.user.id,
+
+      candidateId: candidate._id,
+
+      ownerId: candidate._id,
+      ownerType: "Candidate",
+
       documentType,
+
       documentName: documentName.trim(),
       originalName: documentName.trim(),
+
       fileName: req.file.filename,
       filePath: req.file.path,
+
       fileUrl: `/uploads/candidate-documents/${req.file.filename}`,
+
       mimeType: req.file.mimetype,
       size: req.file.size,
+
       status: "pending",
+
       uploadedBy: req.user.id,
     });
+
     return res.status(201).json({
       success: true,
-      message: "Document uploaded successfully",
-      document: {
-        id: document._id,
-        documentType: document.documentType,
-        documentName: document.documentName,
-        fileUrl: document.fileUrl,
-        status: document.status,
-        uploadedAt: document.uploadedAt,
-      },
+      message: "Candidate document uploaded successfully.",
+      document,
     });
   } catch (error) {
     cleanupUploadedFile(req);
-    console.error("Upload candidate document error:", error.message);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+
+    console.error("Upload candidate document error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to upload candidate document.",
+    });
   }
 };
 

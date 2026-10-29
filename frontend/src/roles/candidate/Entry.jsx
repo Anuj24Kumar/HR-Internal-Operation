@@ -10,6 +10,7 @@ import MyDocuments from "./pages/MyDocuments.jsx";
 import MyOffer from "./pages/MyOffer.jsx";
 import MyProfile from "./pages/MyProfile.jsx";
 
+
 export default function CandidateEntry() {
   const { message, logout } = useRoleAuth("candidate");
 
@@ -33,4 +34,5 @@ export default function CandidateEntry() {
     </Routes>
   );
 }
+
 

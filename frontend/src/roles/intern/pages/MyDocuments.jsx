@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FileText, RefreshCw, UploadCloud } from "lucide-react";
 
 import {
@@ -63,6 +63,8 @@ export default function MyDocuments() {
   const [documentName, setDocumentName] = useState("");
   const [file, setFile] = useState(null);
 
+  const formRef = useRef(null);
+
   const loadDocuments = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -100,15 +102,18 @@ export default function MyDocuments() {
         file,
       });
 
-      setDocumentName("");
-      setFile(null);
+      
+     setDocumentName("");
+setFile(null);
+setDocumentType("resume");
 
-      event.currentTarget.reset();
-      setDocumentType("resume");
+// Reset form safely after upload
+formRef.current?.reset();
 
-      setActionMessage("Document uploaded successfully.");
+setActionMessage("Document uploaded successfully.");
 
-      await loadDocuments();
+// Refresh documents immediately
+await loadDocuments();
     } catch (err) {
       setActionError(err.message || "Document upload failed.");
     } finally {
@@ -181,9 +186,10 @@ export default function MyDocuments() {
         </div>
 
         <form
-          onSubmit={handleUpload}
-          className="grid gap-4 md:grid-cols-2"
-        >
+  ref={formRef}
+  onSubmit={handleUpload}
+  className="grid gap-4 md:grid-cols-2"
+>
           <div>
             <label
               htmlFor="documentType"
