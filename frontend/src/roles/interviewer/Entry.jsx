@@ -154,7 +154,6 @@ export default function InterviewerEntry() {
           <Profile user={user} onBack={() => setActiveTab("dashboard")} />
         ) : (
           <InterviewMain
-            user={user}
             actionMessage={actionMessage}
             actionError={actionError}
             handleRefresh={handleRefresh}

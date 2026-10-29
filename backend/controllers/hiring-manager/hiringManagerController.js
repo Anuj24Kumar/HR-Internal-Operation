@@ -1,6 +1,8 @@
 const Candidate = require('../../models/Candidate');
 const ApprovalRequest = require('../../models/ApprovalRequest');
 const HiringRecommendation = require('../../models/hiring-manager/HiringRecommendation');
+const Offer = require('../../models/Offer');
+const Letter = require('../../models/Letter');
 
 const userIdOf = (req) => req.user?._id || req.user?.id;
 const idString = (value) => value == null ? '' : String(value);
@@ -212,7 +214,36 @@ exports.getApproval = async (req, res, next) => {
     if (!assigned) return res.status(403).json({ success: false, error: {
       code: 'FORBIDDEN', message: 'This approval is not assigned to you'
     }});
-    return res.json({ success: true, data: approval });
+
+    const relatedIds = [approval.resourceId, approval.entityId].filter(Boolean);
+    let resource = null;
+    const requestType = String(approval.entityType || approval.requestType || '').toLowerCase();
+
+    if (requestType === 'offer') {
+      const offerQuery = [{ approvalId: approval._id }];
+      if (relatedIds.length) {
+        offerQuery.push({ _id: { $in: relatedIds } });
+      }
+      const offer = await Offer.findOne({ $or: offerQuery })
+        .select('offerType designation salary joiningDate expiryDate expiresAt status approvalStatus createdAt')
+        .lean();
+      if (offer) {
+        resource = { type: 'offer', ...offer };
+      }
+    } else if (requestType === 'letter') {
+      const letterQuery = [{ approvalId: approval._id }];
+      if (relatedIds.length) {
+        letterQuery.push({ _id: { $in: relatedIds } });
+      }
+      const letter = await Letter.findOne({ $or: letterQuery })
+        .select('type letterType status submittedAt createdAt')
+        .lean();
+      if (letter) {
+        resource = { type: 'letter', ...letter };
+      }
+    }
+
+    return res.json({ success: true, data: { ...approval, resource } });
   } catch (err) { next(err); }
 };
 

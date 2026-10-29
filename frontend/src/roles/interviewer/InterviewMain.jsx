@@ -29,7 +29,6 @@ const TAB_DETAILS = {
 };
 
 export default function InterviewMain({
-  user,
   actionMessage,
   actionError,
   handleRefresh,
@@ -49,41 +48,37 @@ export default function InterviewMain({
 
   return (
     <main className="content-area">
-      {actionMessage && (
+      {!isDashboard && actionMessage && (
         <div className="auth-success" role="status">
           <CheckCircle2 size={18} className="shrink-0" />
           <span>{actionMessage}</span>
         </div>
       )}
 
-      {actionError && (
+      {!isDashboard && actionError && (
         <div className="auth-error" role="alert">
           <AlertCircle size={18} className="shrink-0" />
           <span>{actionError}</span>
         </div>
       )}
 
-      <section className="page-header">
-        <div>
-          <h1 className="page-title">
-            {isDashboard ? "Dashboard" : tabDetails.title}
-          </h1>
-          <p className="page-subtitle">
-            {isDashboard
-              ? `Welcome back, ${user?.name || "Interviewer"}. Here is your interview overview.`
-              : tabDetails.description}
-          </p>
-        </div>
-        <button
-          type="button"
-          className="btn-action-outline"
-          onClick={handleRefresh}
-          disabled={refreshing}
-        >
-          <RefreshCw size={14} className={refreshing ? "spin" : ""} />
-          <span>{refreshing ? "Refreshing..." : "Sync Schedule"}</span>
-        </button>
-      </section>
+      {!isDashboard && (
+        <section className="page-header">
+          <div>
+            <h1 className="page-title">{tabDetails.title}</h1>
+            <p className="page-subtitle">{tabDetails.description}</p>
+          </div>
+          <button
+            type="button"
+            className="btn-action-outline"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            <RefreshCw size={14} className={refreshing ? "spin" : ""} />
+            <span>{refreshing ? "Refreshing..." : "Sync Schedule"}</span>
+          </button>
+        </section>
+      )}
 
       {isDashboard ? (
         <section className="metrics-grid" aria-label="Interview summary">
