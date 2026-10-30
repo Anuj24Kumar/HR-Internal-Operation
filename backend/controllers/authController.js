@@ -17,12 +17,11 @@ const registerUser = async (req, res) => {
       typeof firstName !== "string" || !firstName.trim() ||
       typeof lastName !== "string" || !lastName.trim() ||
       typeof email !== "string" || !email.trim() ||
-      typeof password !== "string" || !password ||
-      typeof position !== "string" || !position.trim()
+      typeof password !== "string" || !password
     ) {
       return res.status(400).json({
         success: false,
-        message: "First name, last name, email, password and position are required",
+        message: "First name, last name, email, and password are required",
       });
     }
     if (password.length < 8) {
@@ -49,13 +48,14 @@ const registerUser = async (req, res) => {
       phone: typeof phone === "string" ? phone.trim() : "",
       role: "candidate",
     });
+    const candidatePosition = typeof position === "string" && position.trim() ? position.trim() : "Candidate";
     const candidate = await Candidate.create({
       user: createdUser._id,
       userId: createdUser._id,
       name: createdUser.name,
       email: createdUser.email,
       phone: createdUser.phone,
-      position: position.trim(),
+      position: candidatePosition,
       applicationSource: "Direct",
       source: "Direct",
       status: "Applied",

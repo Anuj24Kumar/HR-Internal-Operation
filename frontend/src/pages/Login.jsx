@@ -23,6 +23,7 @@ export default function Login() {
     setError("");
     setLoading(true);
 
+
     try {
       const result = await apiRequest("/auth/login", {
         method: "POST",
@@ -32,10 +33,13 @@ export default function Login() {
         }),
       });
 
+
       const user = result.user || result.data?.user;
       const token = result.token || result.data?.token;
 
+
       if (!user || !token) {
+        throw new Error("The server response did not include an authentication token.");
         throw new Error("The server response did not include an authentication token.");
       }
 

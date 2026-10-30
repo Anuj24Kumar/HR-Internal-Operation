@@ -34,7 +34,6 @@ export default function Signup() {
     lastName: "",
     email: "",
     phone: "",
-    position: "",
     password: "",
   });
   const [showPassword, setShowPassword] = useState(false);
