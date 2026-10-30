@@ -48,18 +48,27 @@ router.delete("/workflows/:id", workflowController.deleteWorkflow);
 // 3. Letter Template Management
 // ==========================================
 router.get("/letter-templates", letterTemplateController.getAllLetterTemplates);
+router.get("/templates", letterTemplateController.getAllLetterTemplates);
 router.post("/letter-templates", letterTemplateController.createLetterTemplate);
+router.post("/templates", letterTemplateController.createLetterTemplate);
 router.get("/letter-templates/:id", letterTemplateController.getLetterTemplateById);
+router.get("/templates/:id", letterTemplateController.getLetterTemplateById);
 router.patch("/letter-templates/:id", letterTemplateController.updateLetterTemplate);
+router.patch("/templates/:id", letterTemplateController.updateLetterTemplate);
 router.patch("/letter-templates/:id/deactivate", letterTemplateController.deactivateLetterTemplate);
+router.patch("/templates/:id/deactivate", letterTemplateController.deactivateLetterTemplate);
 router.delete("/letter-templates/:id", letterTemplateController.deleteLetterTemplate);
+router.delete("/templates/:id", letterTemplateController.deleteLetterTemplate);
 
 // ==========================================
 // 4. Audit Log (Read-only)
 // ==========================================
 router.get("/audit", auditController.getAuditLogs);
+router.get("/audit-logs", auditController.getAuditLogs);
 router.get("/audit/export", auditController.exportAuditLogs);
+router.get("/audit-logs/export", auditController.exportAuditLogs);
 router.get("/audit/:id", auditController.getAuditLogById);
+router.get("/audit-logs/:id", auditController.getAuditLogById);
 
 // ==========================================
 // 5. Admin Dashboard

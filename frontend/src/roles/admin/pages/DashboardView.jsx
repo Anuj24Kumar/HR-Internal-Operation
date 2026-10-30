@@ -14,7 +14,6 @@ import {
   RefreshCw,
 } from "lucide-react";
 import StatCard from "../components/StatCard.jsx";
-import QuickActions from "../components/QuickActions.jsx";
 import { fetchAdminDashboard, fetchPipelineDistribution, fetchAuditLogs } from "../adminApi.js";
 import { StatusBadge, RoleBadge } from "../components/Badge.jsx";
 
@@ -125,9 +124,6 @@ export default function DashboardView({ user, onSelectTab }) {
           onClick={() => onSelectTab("recruitment")}
         />
       </div>
-
-      {/* Quick Actions Row — Matching Screenshot */}
-      <QuickActions onSelectTab={onSelectTab} />
 
       {/* Hiring Pipeline Stage Breakdown */}
       {pipeline && (

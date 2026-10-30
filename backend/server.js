@@ -36,9 +36,13 @@ app.use("/api/v1", interviewerRoutes);
 app.use("/api/v1", hiringManagerRoutes);
 
 app.use("/api/candidate", candidateRoutes);
+app.use("/api/v1/candidate", candidateRoutes);
 app.use("/api/v1/candidates", candidateRoutes);
 app.use("/api/sign", signRoutes);
+app.use("/api/v1/sign", signRoutes);
 app.use("/api/intern", internRoutes);
+app.use("/api/v1/intern", internRoutes);
+app.use("/api/v1/interns", internRoutes);
 app.use("/api/employee", employeeRoutes);
 app.use("/api/v1/employee", employeeRoutes);
 app.use("/api/v1/employees", employeeRoutes);
