@@ -1,9 +1,19 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, CheckCircle2, ShieldCheck } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, CheckCircle2, Zap } from "lucide-react";
 import { apiRequest } from "../api.js";
 import { roles } from "../roles.js";
 import "./auth.css";
+
+const DEMO_ACCOUNTS = [
+  { role: "admin", label: "Admin", email: "admin@company.com", password: "Admin@12345", icon: "👑" },
+  { role: "hr", label: "HR", email: "hr@company.com", password: "HR@12345", icon: "💼" },
+  { role: "hiring_manager", label: "Hiring Manager", email: "manager@company.com", password: "Manager@123", icon: "👔" },
+  { role: "interviewer", label: "Interviewer", email: "interviewer@company.com", password: "Interviewer@123", icon: "📋" },
+  { role: "employee", label: "Employee", email: "employee@company.com", password: "Employee@123", icon: "👤" },
+  { role: "intern", label: "Intern", email: "intern@company.com", password: "Intern@123", icon: "🎓" },
+  { role: "candidate", label: "Candidate", email: "candidate@company.com", password: "Candidate@123", icon: "📄" },
+];
 
 export default function Login() {
   const location = useLocation();
@@ -18,33 +28,28 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(event) {
-    event.preventDefault();
+  async function performLogin(email, password, role) {
     setError("");
     setLoading(true);
-
 
     try {
       const result = await apiRequest("/auth/login", {
         method: "POST",
         body: JSON.stringify({
-          email: form.email.trim(),
-          password: form.password,
+          email: email.trim(),
+          password,
         }),
       });
-
 
       const user = result.user || result.data?.user;
       const token = result.token || result.data?.token;
 
-
       if (!user || !token) {
-        throw new Error("The server response did not include an authentication token.");
         throw new Error("The server response did not include an authentication token.");
       }
 
       // Check role mismatch if a specific role was selected
-      if (form.role && form.role !== user.role) {
+      if (role && role !== user.role) {
         throw new Error(
           `This account belongs to the "${user.role}" role. Please switch role or select Auto-detect.`
         );
@@ -65,9 +70,18 @@ export default function Login() {
     }
   }
 
-  function fillDemoAccount(email, password, role) {
-    setForm({ email, password, role });
-    setError("");
+  async function handleSubmit(event) {
+    event.preventDefault();
+    await performLogin(form.email, form.password, form.role);
+  }
+
+  function handleQuickLogin(account) {
+    setForm({
+      email: account.email,
+      password: account.password,
+      role: account.role,
+    });
+    performLogin(account.email, account.password, account.role);
   }
 
   return (
@@ -180,34 +194,28 @@ export default function Login() {
           </button>
         </form>
 
-        {/* Demo Credentials Quick Fill */}
+        {/* Quick Login Options */}
         <div className="auth-demo-box">
           <div className="auth-demo-title">
-            <ShieldCheck size={14} style={{ color: "#2563eb" }} />
-            <span>Database Accounts</span>
+            <Zap size={14} style={{ color: "#2563eb" }} />
+            <span>Quick 1-Click Login</span>
           </div>
+          <p style={{ fontSize: "11.5px", color: "#64748b", margin: "4px 0 10px 0" }}>
+            Click any role to auto-sign in immediately:
+          </p>
           <div className="auth-demo-pills">
-            <button
-              type="button"
-              className="auth-demo-pill"
-              onClick={() => fillDemoAccount("admin@hrplatform.com", "admin123", "admin")}
-            >
-              👑 Admin (admin@hrplatform.com)
-            </button>
-            <button
-              type="button"
-              className="auth-demo-pill"
-              onClick={() => fillDemoAccount("admin@company.com", "Admin@12345", "admin")}
-            >
-              👑 Admin (admin@company.com)
-            </button>
-            <button
-              type="button"
-              className="auth-demo-pill"
-              onClick={() => fillDemoAccount("hr@company.com", "HR@12345", "hr")}
-            >
-              💼 HR (hr@company.com)
-            </button>
+            {DEMO_ACCOUNTS.map((acc) => (
+              <button
+                key={acc.role}
+                type="button"
+                className="auth-demo-pill"
+                disabled={loading}
+                onClick={() => handleQuickLogin(acc)}
+                title={`Quick login as ${acc.label} (${acc.email})`}
+              >
+                <span>{acc.icon}</span> <span>{acc.label}</span>
+              </button>
+            ))}
           </div>
         </div>
 
