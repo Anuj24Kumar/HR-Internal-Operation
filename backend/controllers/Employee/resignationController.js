@@ -1,5 +1,7 @@
 const Employee = require("../../models/Employee/Employee");
 const Resignation = require("../../models/Employee/Resignation");
+const Exit = require("../../models/Exit");
+const ApprovalRequest = require("../../models/ApprovalRequest");
 
 // GET /api/employee/resignation
 const getMyResignation = async (req, res) => {
@@ -125,6 +127,28 @@ const submitResignation = async (req, res) => {
       },
     });
 
+    // Also create Exit & ApprovalRequest so it appears in HR/Admin Exit Management
+    try {
+      const exitRecord = await Exit.create({
+        employeeId: employee._id,
+        resignationDate: new Date(),
+        lastWorkingDay: lastWorkingDay,
+        reason: reason.trim(),
+        createdBy: req.user.id,
+        status: "Pending Approval",
+      });
+      const approvalRequest = await ApprovalRequest.create({
+        requestType: "Other",
+        resourceId: exitRecord._id,
+        requestedBy: req.user.id,
+        status: "Pending",
+      });
+      exitRecord.approvalRequestId = approvalRequest._id;
+      await exitRecord.save();
+    } catch (exitSyncErr) {
+      console.warn("Notice: Exit record sync error:", exitSyncErr.message);
+    }
+
     return res.status(201).json({
       success: true,
       message: "Resignation submitted successfully",
@@ -175,6 +199,15 @@ const withdrawResignation = async (req, res) => {
     resignation.status = "withdrawn";
 
     await resignation.save();
+
+    try {
+      await Exit.updateMany(
+        { employeeId: employee._id, status: { $in: ["Pending Approval", "initiated"] } },
+        { status: "Rejected" }
+      );
+    } catch (exitWithdrawErr) {
+      console.warn("Notice: Exit withdraw sync:", exitWithdrawErr.message);
+    }
 
     return res.status(200).json({
       success: true,
