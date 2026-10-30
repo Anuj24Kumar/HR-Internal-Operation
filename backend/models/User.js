@@ -55,7 +55,7 @@ userSchema.pre("validate", function () {
   if (!this.name && (this.firstName || this.lastName)) {
     this.name = [this.firstName, this.lastName].filter(Boolean).join(" ");
   }
-  if (!this.password && !this.passwordHash) {
+  if (this.isNew && !this.password && !this.passwordHash) {
     this.invalidate("passwordHash", "A password is required");
   }
   if (!this.name) {
