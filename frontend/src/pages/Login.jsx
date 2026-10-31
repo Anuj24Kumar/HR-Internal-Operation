@@ -1,12 +1,26 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { 
+  Mail, 
+  Lock, 
+  Eye, 
+  EyeOff, 
+  ArrowRight, 
+  AlertCircle, 
+  CheckCircle2
+} from "lucide-react";
 import { apiRequest } from "../api.js";
 import { roles } from "../roles.js";
 import RoleEntry from "../roles/RoleEntry.jsx";
 
 export default function Login() {
   const location = useLocation();
-  const [form, setForm] = useState({ email: "", password: "", role: "candidate" });
+  const [form, setForm] = useState({ 
+    email: "admin@company.com", 
+    password: "Admin@12345", 
+    role: "admin" 
+  });
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [destinationRole, setDestinationRole] = useState(null);
@@ -15,19 +29,27 @@ export default function Login() {
     event.preventDefault();
     setError("");
     setLoading(true);
+
     try {
       const result = await apiRequest("/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email: form.email, password: form.password }),
+        body: JSON.stringify({ 
+          email: form.email.trim(), 
+          password: form.password 
+        }),
       });
+
       const user = result.user || result.data?.user;
       const token = result.token || result.data?.token;
+
       if (!user || !token) {
-        throw new Error("The server response did not include a user and token.");
+        throw new Error("The server response did not include an authentication token.");
       }
+
       if (user.role !== form.role) {
-        throw new Error(`This account belongs to the ${user.role} role. Select that role to continue.`);
+        throw new Error(`This account belongs to the "${user.role}" role. Please switch your selected role to match.`);
       }
+
       localStorage.setItem("hr-auth-token", token);
       setDestinationRole(user.role);
     } catch (requestError) {
@@ -42,47 +64,110 @@ export default function Login() {
   }
 
   return (
-    <main className="form-page">
-      <form className="simple-form" onSubmit={handleSubmit}>
-        <h1>Login</h1>
-        {location.state?.message && <p role="status">{location.state.message}</p>}
-        <label>
-          Role
-          <select
-            value={form.role}
-            onChange={(event) => setForm({ ...form, role: event.target.value })}
-          >
-            {roles.map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Email
-          <input
-            type="email"
-            autoComplete="email"
-            required
-            value={form.email}
-            onChange={(event) => setForm({ ...form, email: event.target.value })}
-          />
-        </label>
-        <label>
-          Password
-          <input
-            type="password"
-            autoComplete="current-password"
-            required
-            value={form.password}
-            onChange={(event) => setForm({ ...form, password: event.target.value })}
-          />
-        </label>
-        {error && <p className="error" role="alert">{error}</p>}
-        <button type="submit" disabled={loading}>
-          {loading ? "Logging in..." : "Login"}
-        </button>
-        <p>Candidate account? <Link to="/signup">Sign up</Link></p>
-      </form>
+    <main className="auth-page">
+      <div className="auth-card">
+        <header className="auth-header">
+          <h1 className="auth-title">Login Page</h1>
+        </header>
+
+        {location.state?.message && (
+          <div className="auth-success" style={{ marginBottom: "16px" }} role="status">
+            <CheckCircle2 size={18} className="shrink-0" />
+            <span>{location.state.message}</span>
+          </div>
+        )}
+
+        {error && (
+          <div className="auth-error" style={{ marginBottom: "16px" }} role="alert">
+            <AlertCircle size={18} className="shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <form className="auth-form" onSubmit={handleSubmit}>
+          {/* Role Selection */}
+          <div className="form-group">
+            <label className="form-label" htmlFor="login-role">Select Your Role</label>
+            <select
+              id="login-role"
+              className="form-select"
+              value={form.role}
+              onChange={(event) => setForm({ ...form, role: event.target.value })}
+            >
+              {roles.map(([value, label]) => (
+                <option
+                  key={value}
+                  value={value}
+                >
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Email input */}
+          <div className="form-group">
+            <label className="form-label" htmlFor="login-email">Work Email</label>
+            <div className="input-wrapper">
+              <Mail className="input-icon-left" size={16} />
+              <input
+                id="login-email"
+                type="email"
+                autoComplete="email"
+                required
+                className="form-input input-with-left-icon"
+                placeholder="name@company.com"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+              />
+            </div>
+          </div>
+
+          {/* Password input */}
+          <div className="form-group">
+            <label className="form-label" htmlFor="login-password">
+              <span>Password</span>
+            </label>
+            <div className="input-wrapper">
+              <Lock className="input-icon-left" size={16} />
+              <input
+                id="login-password"
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                required
+                className="form-input input-with-left-icon input-with-right-icon"
+                placeholder="Enter your password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+              />
+              <button
+                type="button"
+                className="input-icon-right"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          <button type="submit" className="auth-btn-primary" disabled={loading}>
+            {loading ? (
+              <span>Authenticating...</span>
+            ) : (
+              <>
+                <span>Sign In to Workspace</span>
+                <ArrowRight size={16} />
+              </>
+            )}
+          </button>
+        </form>
+
+        <footer className="auth-footer">
+          <span>Are you a candidate applicant? </span>
+          <Link to="/signup" className="auth-link">Create candidate account</Link>
+        </footer>
+      </div>
     </main>
   );
 }

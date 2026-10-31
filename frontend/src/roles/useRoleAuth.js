@@ -3,76 +3,73 @@ import { useNavigate } from "react-router-dom";
 import { apiRequest } from "../api.js";
 
 export default function useRoleAuth(role) {
-const navigate = useNavigate();
-const [message, setMessage] = useState("Checking account...");
+  const navigate = useNavigate();
+  const [message, setMessage] = useState("Checking account...");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(() => localStorage.getItem("hr-auth-token") || "");
 
-useEffect(() => {
-let isMounted = true;
+  useEffect(() => {
+    let isMounted = true;
+    const currentToken = localStorage.getItem("hr-auth-token");
 
-
-const token = localStorage.getItem("hr-auth-token");
-
-if (!token) {
-  navigate("/login", { replace: true });
-  return;
-}
-
-async function checkRole() {
-  try {
-    const result = await apiRequest("/auth/me", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    if (!isMounted) return;
-
-    if (result.user?.role !== role) {
-      console.error("Role mismatch:", {
-        expected: role,
-        received: result.user?.role,
-      });
-
+    if (!currentToken) {
       navigate("/login", { replace: true });
-      return;
+      return () => {
+        isMounted = false;
+      };
     }
 
-    setMessage(
-      `Signed in as ${
-        result.user.name || result.user.email || role
-      }.`
-    );
-  } catch (error) {
-    if (!isMounted) return;
+    async function checkRole() {
+      try {
+        const result = await apiRequest("/auth/me", {
+          headers: { Authorization: `Bearer ${currentToken}` },
+        });
 
-    console.error("Authentication check failed:", error.message);
+        if (!isMounted) return;
 
-    // Clear the token only when authentication is actually rejected.
-    if (
-      /token|unauthorized|authentication|jwt|session expired/i.test(
-        error.message
-      )
-    ) {
-      localStorage.removeItem("hr-auth-token");
+        const authenticatedUser = result.user || result.data?.user;
+        if (!authenticatedUser || authenticatedUser.role !== role) {
+          console.error("Role mismatch or missing user in authentication response.", {
+            expected: role,
+            received: authenticatedUser?.role,
+          });
+          navigate("/login", { replace: true });
+          return;
+        }
+
+        setUser(authenticatedUser);
+        setToken(currentToken);
+        setMessage(
+          `Signed in as ${authenticatedUser.name || authenticatedUser.email}.`
+        );
+        setIsAuthenticated(true);
+      } catch (error) {
+        if (!isMounted) return;
+
+        console.error("Authentication check failed:", error.message);
+        if (error.status === 401 || error.status === 403) {
+          localStorage.removeItem("hr-auth-token");
+          setToken("");
+        }
+        navigate("/login", { replace: true });
+      }
     }
 
+    checkRole();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [navigate, role]);
+
+  function logout() {
+    localStorage.removeItem("hr-auth-token");
+    setToken("");
+    setUser(null);
+    setIsAuthenticated(false);
     navigate("/login", { replace: true });
   }
-}
 
-checkRole();
-
-return () => {
-  isMounted = false;
-};
-
-
-}, [navigate, role]);
-
-function logout() {
-localStorage.removeItem("hr-auth-token");
-navigate("/login", { replace: true });
-}
-
-return { message, logout };
+  return { message, logout, isAuthenticated, user, token };
 }

@@ -19,8 +19,8 @@ const getAdminDashboard = async (req, res) => {
       Employee.countDocuments({ type: "employee", status: "active" }),
       Employee.countDocuments({ type: "intern", status: "active" }),
       Candidate.countDocuments({
-        status: { $in: ["applied", "screening", "interview"] },
-        isArchived: false,
+        status: { $in: ["applied", "screening", "interview", "Applied", "Screening", "Interview"] },
+        isArchived: { $ne: true },
       }),
       Offer.countDocuments({
         status: { $in: ["draft", "pending_approval", "sent"] },
@@ -66,10 +66,10 @@ const getAdminDashboard = async (req, res) => {
 const getPipelineDistribution = async (req, res) => {
   try {
     const pipelineCounts = await Candidate.aggregate([
-      { $match: { isArchived: false } },
+      { $match: { isArchived: { $ne: true } } },
       {
         $group: {
-          _id: "$status",
+          _id: { $toLower: "$status" },
           count: { $sum: 1 },
         },
       },
@@ -86,8 +86,9 @@ const getPipelineDistribution = async (req, res) => {
     };
 
     pipelineCounts.forEach((stage) => {
-      if (distribution[stage._id] !== undefined) {
-        distribution[stage._id] = stage.count;
+      const key = stage._id;
+      if (distribution[key] !== undefined) {
+        distribution[key] = stage.count;
       }
       distribution.total += stage.count;
     });

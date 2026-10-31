@@ -1,6 +1,8 @@
 const Candidate = require('../../models/Candidate');
 const ApprovalRequest = require('../../models/ApprovalRequest');
 const HiringRecommendation = require('../../models/hiring-manager/HiringRecommendation');
+const Offer = require('../../models/Offer');
+const Letter = require('../../models/Letter');
 
 const userIdOf = (req) => req.user?._id || req.user?.id;
 const idString = (value) => value == null ? '' : String(value);
@@ -33,6 +35,13 @@ function stripSensitive(candidate) {
   return obj;
 }
 
+function isCurrentApproverForManager(step, uid) {
+  if (!step || step.status !== 'pending') return false;
+  if (idString(step.approverId) === idString(uid)) return true;
+  if (!step.approverId && (step.approverRole === 'hiring_manager' || step.approverRole === 'hm')) return true;
+  return false;
+}
+
 exports.getDashboard = async (req, res, next) => {
   try {
     const query = assignedToManagerQuery(req);
@@ -54,8 +63,7 @@ exports.getDashboard = async (req, res, next) => {
     ]);
     const approvalsToApprove = pendingApprovals.filter(approval => {
       const step = currentApprovalStep(approval);
-      return step && step.status === 'pending' &&
-        idString(step.approverId) === idString(userIdOf(req));
+      return isCurrentApproverForManager(step, userIdOf(req));
     }).length;
     return res.json({
       success: true,
@@ -163,6 +171,20 @@ exports.recommendCandidate = async (req, res, next) => {
       decision,
       comments
     });
+
+    candidate.hiringRecommendation = {
+      status: decision,
+      comments,
+      recommendedAt: new Date(),
+      recommendedBy: userIdOf(req),
+    };
+    if (decision === 'select') {
+      candidate.status = 'selected';
+    } else if (decision === 'reject') {
+      candidate.status = 'rejected';
+    }
+    await candidate.save();
+
     return res.status(201).json({ success: true, data: recommendation,
       message: 'Hiring recommendation submitted' });
   } catch (err) { next(err); }
@@ -175,8 +197,7 @@ exports.listApprovals = async (req, res, next) => {
       .sort({ createdAt: -1 }).lean();
     const filtered = approvals.filter(a => {
       const step = currentApprovalStep(a);
-      return step && step.status === 'pending' &&
-        idString(step.approverId) === idString(uid);
+      return isCurrentApproverForManager(step, uid);
     });
     return res.json({ success: true, data: filtered });
   } catch (err) { next(err); }
@@ -189,11 +210,40 @@ exports.getApproval = async (req, res, next) => {
       error: { code: 'NOT_FOUND', message: 'Approval request not found' } });
     const uid = idString(userIdOf(req));
     const step = currentApprovalStep(approval);
-    const assigned = step && idString(step.approverId) === uid;
+    const assigned = isCurrentApproverForManager(step, uid);
     if (!assigned) return res.status(403).json({ success: false, error: {
       code: 'FORBIDDEN', message: 'This approval is not assigned to you'
     }});
-    return res.json({ success: true, data: approval });
+
+    const relatedIds = [approval.resourceId, approval.entityId].filter(Boolean);
+    let resource = null;
+    const requestType = String(approval.entityType || approval.requestType || '').toLowerCase();
+
+    if (requestType === 'offer') {
+      const offerQuery = [{ approvalId: approval._id }];
+      if (relatedIds.length) {
+        offerQuery.push({ _id: { $in: relatedIds } });
+      }
+      const offer = await Offer.findOne({ $or: offerQuery })
+        .select('offerType designation salary joiningDate expiryDate expiresAt status approvalStatus createdAt')
+        .lean();
+      if (offer) {
+        resource = { type: 'offer', ...offer };
+      }
+    } else if (requestType === 'letter') {
+      const letterQuery = [{ approvalId: approval._id }];
+      if (relatedIds.length) {
+        letterQuery.push({ _id: { $in: relatedIds } });
+      }
+      const letter = await Letter.findOne({ $or: letterQuery })
+        .select('type letterType status submittedAt createdAt')
+        .lean();
+      if (letter) {
+        resource = { type: 'letter', ...letter };
+      }
+    }
+
+    return res.json({ success: true, data: { ...approval, resource } });
   } catch (err) { next(err); }
 };
 
@@ -205,8 +255,7 @@ async function decideApproval(req, res, next, decision) {
     }});
     const uid = idString(userIdOf(req));
     const step = currentApprovalStep(approval);
-    if (!step || idString(step.approverId) !== uid || step.status !== 'pending' ||
-        approval.status !== 'pending') {
+    if (!isCurrentApproverForManager(step, uid) || approval.status !== 'pending') {
       return res.status(403).json({ success: false, error: {
         code: 'FORBIDDEN', message: 'You are not the current approver for this request'
       }});
@@ -218,6 +267,7 @@ async function decideApproval(req, res, next, decision) {
     }
     step.status = decision === 'approve' ? 'approved' : 'rejected';
     step.comment = String(req.body.comment || '').trim();
+    step.approverId = step.approverId || uid;
     step.actedAt = new Date();
     if (decision === 'reject') {
       approval.status = 'rejected';
