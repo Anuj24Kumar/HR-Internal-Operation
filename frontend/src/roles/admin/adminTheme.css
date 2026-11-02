@@ -219,6 +219,7 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  margin-left: 260px;
   background-color: var(--admin-main-bg);
 }
 
@@ -899,3 +900,5 @@
   animation: spin 1s linear infinite;
 }
 
+
+@media (max-width: 768px) { .admin-main { margin-left: 0 !important; } }

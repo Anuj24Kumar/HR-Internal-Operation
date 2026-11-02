@@ -23,6 +23,7 @@ export default function InterviewerEntry() {
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const [hoverRating, setHoverRating] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -132,26 +133,26 @@ export default function InterviewerEntry() {
   return (
     <div className="shell">
       <Sidebar
-        user={user}
-        logout={logout}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onOpenProfile={() => setActiveTab("profile")}
         assignedInterviewRounds={pendingInterviewRounds.length}
         completedInterviewRounds={completedInterviewRounds.length}
         feedbackCompletedRounds={feedbackCompletedRounds.length}
+        mobileOpen={mobileOpen}
+        onCloseMobile={() => setMobileOpen(false)}
       />
 
-      <div className="main-shell">
+      <div className="main-shell md:ml-[260px]">
         <Topbar
-          userName={user?.name}
+          user={user}
+          onOpenProfile={() => setActiveTab("profile")}
+          logout={logout}
           pendingRounds={pendingFeedbackRounds.length}
-          showNotifications={showNotifications}
-          setShowNotifications={setShowNotifications}
+          onToggleMobile={() => setMobileOpen(!mobileOpen)}
         />
 
         {activeTab === "profile" ? (
-          <Profile user={user} onBack={() => setActiveTab("dashboard")} />
+          <Profile user={user} />
         ) : (
           <InterviewMain
             actionMessage={actionMessage}

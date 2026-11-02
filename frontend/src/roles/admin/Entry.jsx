@@ -14,12 +14,14 @@ import EmployeesView from "./pages/EmployeesView.jsx";
 import WorkflowsView from "./pages/WorkflowsView.jsx";
 import TemplatesView from "./pages/TemplatesView.jsx";
 import AuditLogsView from "./pages/AuditLogsView.jsx";
+import ProfileView from "./pages/ProfileView.jsx";
 
 export default function AdminEntry() {
   const { logout } = useRoleAuth("admin");
   const [currentUser, setCurrentUser] = useState(null);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("hr-auth-token");
@@ -56,24 +58,29 @@ export default function AdminEntry() {
         onClose={() => setSearchModalOpen(false)}
       />
 
-      {/* Dark Sidebar (matching PeopleOps theme) */}
+      {/* Dark Sidebar with identical design across all roles */}
       <Sidebar
         activeTab={activeTab}
         onSelectTab={setActiveTab}
-        onLogout={logout}
-        user={currentUser}
+        mobileOpen={mobileOpen}
+        onCloseMobile={() => setMobileOpen(false)}
       />
 
       {/* Main Content Area */}
-      <div className="admin-main">
-        {/* Top Header Bar */}
+      <div className="admin-main md:ml-[260px]">
+        {/* Top Header Bar with identical design across all roles */}
         <Header
           user={currentUser}
           onLogout={logout}
           onOpenSearch={() => setSearchModalOpen(true)}
+          onViewProfile={() => setActiveTab("profile")}
+          onToggleMobile={() => setMobileOpen(!mobileOpen)}
         />
 
         {/* Tab Pages */}
+        {activeTab === "profile" && (
+          <ProfileView user={currentUser} />
+        )}
         {activeTab === "dashboard" && (
           <DashboardView user={currentUser} onSelectTab={setActiveTab} />
         )}

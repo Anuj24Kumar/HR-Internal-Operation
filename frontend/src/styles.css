@@ -1,6 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 @source "./roles";
+@source "./components";
+@source "./pages";
 
 @layer components {
 :root {
@@ -612,6 +614,7 @@ button {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  margin-left: 260px;
   background: var(--background);
 }
 
@@ -1934,3 +1937,5 @@ button {
     display: none;
   }
 }
+
+@media (max-width: 768px) { .main-shell { margin-left: 0 !important; } }

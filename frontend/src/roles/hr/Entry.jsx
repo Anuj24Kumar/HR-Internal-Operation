@@ -1,13 +1,22 @@
-
 import { useState } from "react";
-import { NavLink, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import {
-  Activity, LayoutDashboard, Users, CalendarDays, BriefcaseBusiness,
-  UserRound, FileText, Files, ClipboardCheck, ShieldCheck,
-  DoorOpen, Bell, Settings, Search, Menu, X, LogOut, ChevronRight
+  LayoutDashboard,
+  Users,
+  CalendarDays,
+  BriefcaseBusiness,
+  UserRound,
+  FileText,
+  Files,
+  ClipboardCheck,
+  ShieldCheck,
+  DoorOpen,
 } from "lucide-react";
 import useRoleAuth from "../useRoleAuth.js";
 import "../../styles.css";
+import UnifiedSidebar from "../../components/UnifiedSidebar.jsx";
+import UnifiedNavbar from "../../components/UnifiedNavbar.jsx";
+
 import Dashboard from "../../pages/Dashboard.jsx";
 import Candidates from "../../pages/Candidates.jsx";
 import Interviews from "../../pages/Interviews.jsx";
@@ -17,6 +26,7 @@ import Documents from "../../pages/Documents";
 import Letters from "../../pages/Letters";
 import Onboarding from "../../pages/Onboarding.jsx";
 import ExitManagement from "../../pages/ExitManagement";
+import HrProfile from "./Profile.jsx";
 
 const navigation = [
   { label: "Overview", path: "/hr/dashboard", icon: LayoutDashboard },
@@ -29,7 +39,6 @@ const navigation = [
   { label: "Onboarding", path: "/hr/onboarding", icon: ClipboardCheck },
   { label: "Approvals", path: "/hr/approvals", icon: ShieldCheck },
   { label: "Exit Management", path: "/hr/exits", icon: DoorOpen },
-  { label: "Notifications", path: "/hr/notifications", icon: Bell },
 ];
 
 function PlaceholderPage({ title }) {
@@ -42,127 +51,41 @@ function PlaceholderPage({ title }) {
   );
 }
 
-function HrLayout({ message, logout }) {
+function HrLayout({ user, message, logout }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
-  const current = navigation.find(item => item.path === location.pathname);
-  const title = current?.label || "Overview";
+  const navigate = useNavigate();
+  const current = navigation.find((item) => item.path === location.pathname);
+  const title = location.pathname.includes("/profile") ? "My Profile" : (current?.label || "Overview");
+
+  const notifications = [
+    { id: 1, title: "HR Operations", message: "All recruitment and onboarding workflows active." },
+  ];
 
   return (
-    <div className="hr-app">
-      {mobileOpen && (
-        <button
-          className="hr-mobile-overlay"
-          aria-label="Close navigation"
-          onClick={() => setMobileOpen(false)}
+    <div className="min-h-screen bg-[#F8FAFC]">
+      {/* Sidebar: Same sidebar design as other roles */}
+      <UnifiedSidebar
+        roleTitle="HR Operations"
+        tabs={navigation}
+        mobileOpen={mobileOpen}
+        onCloseMobile={() => setMobileOpen(false)}
+      />
+
+      {/* Main Area */}
+      <div className="min-h-screen min-w-0 md:ml-[260px] flex flex-col">
+        {/* Navbar: Same navbar design as other roles */}
+        <UnifiedNavbar
+          user={user || { name: "HR Team", email: "hr@peopleops.com", role: "hr" }}
+          roleLabel="HR"
+          onViewProfile={() => navigate("/hr/profile")}
+          onLogout={logout}
+          notifications={notifications}
+          onToggleMobile={() => setMobileOpen(!mobileOpen)}
         />
-      )}
 
-      <aside className={`hr-sidebar ${mobileOpen ? "hr-sidebar-open" : ""}`}>
-        <div className="hr-brand">
-          <span className="hr-brand-icon"><Activity size={23} /></span>
-          <span>
-            <strong>PeopleOps</strong>
-            <small>HR OPERATIONS</small>
-          </span>
-          <button
-            className="hr-icon-button hr-close-menu"
-            onClick={() => setMobileOpen(false)}
-            aria-label="Close menu"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="hr-workspace">
-          <span className="hr-workspace-icon">A</span>
-          <span className="hr-workspace-copy">
-            <strong>Acme Corporation</strong>
-            <small>HR workspace</small>
-          </span>
-          <ChevronRight size={16} />
-        </div>
-
-        <div className="hr-nav-label">WORKSPACE</div>
-
-        <nav className="hr-navigation">
-          {navigation.map(({ label, path, icon: Icon }) => (
-            <NavLink
-              key={path}
-              to={path}
-              onClick={() => setMobileOpen(false)}
-              className={({ isActive }) =>
-                `hr-nav-link ${isActive ? "hr-nav-active" : ""}`
-              }
-            >
-              <Icon size={18} strokeWidth={1.8} />
-              <span>{label}</span>
-            </NavLink>
-          ))}
-        </nav>
-
-        <div className="hr-sidebar-bottom">
-          <NavLink
-            to="/hr/settings"
-            className={({ isActive }) =>
-              `hr-nav-link ${isActive ? "hr-nav-active" : ""}`
-            }
-            onClick={() => setMobileOpen(false)}
-          >
-            <Settings size={18} />
-            <span>Settings</span>
-          </NavLink>
-
-          <div className="hr-user-card">
-            <div className="hr-avatar">HR</div>
-            <div className="hr-user-copy">
-              <strong>HR Workspace</strong>
-              <small>{message}</small>
-            </div>
-            <button
-              className="hr-icon-button"
-              onClick={logout}
-              title="Log out"
-              aria-label="Log out"
-            >
-              <LogOut size={17} />
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      <main className="hr-main">
-        <header className="hr-topbar">
-          <div className="hr-breadcrumb">
-            <button
-              className="hr-icon-button hr-menu-button"
-              onClick={() => setMobileOpen(true)}
-              aria-label="Open navigation"
-            >
-              <Menu size={21} />
-            </button>
-            <span>Workspace</span>
-            <ChevronRight size={14} />
-            <strong>{title}</strong>
-          </div>
-
-          <div className="hr-topbar-actions">
-            <label className="hr-global-search">
-              <Search size={17} />
-              <input placeholder="Search anything..." aria-label="Search" />
-              <kbd>⌘ K</kbd>
-            </label>
-            <div className="hr-topbar-user">
-              <div className="hr-avatar">HR</div>
-              <span>
-                <strong>HR Team</strong>
-                <small>Human Resources</small>
-              </span>
-            </div>
-          </div>
-        </header>
-
-        <div className="hr-content">
+        {/* Content */}
+        <div className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
           <Routes>
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="candidates" element={<Candidates />} />
@@ -174,8 +97,7 @@ function HrLayout({ message, logout }) {
             <Route path="onboarding" element={<Onboarding />} />
             <Route path="approvals" element={<PlaceholderPage title="Approvals" />} />
             <Route path="exits" element={<ExitManagement />} />
-            <Route path="notifications" element={<PlaceholderPage title="Notifications" />} />
-            <Route path="settings" element={<PlaceholderPage title="Settings" />} />
+            <Route path="profile" element={<HrProfile user={user} />} />
             <Route path="*" element={<Navigate to="/hr/dashboard" replace />} />
           </Routes>
         </div>
@@ -184,15 +106,15 @@ function HrLayout({ message, logout }) {
           <span>PeopleOps · HR Operations Platform</span>
           <span>Secure HR workspace</span>
         </footer>
-      </main>
+      </div>
     </div>
   );
 }
 
 export default function HrEntry() {
-  const { message, logout } = useRoleAuth("hr");
+  const { user, message, logout } = useRoleAuth("hr");
 
   return (
-    <HrLayout message={message} logout={logout} />
+    <HrLayout user={user} message={message} logout={logout} />
   );
 }

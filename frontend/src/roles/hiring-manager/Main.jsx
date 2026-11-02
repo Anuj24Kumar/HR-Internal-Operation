@@ -68,6 +68,8 @@ export default function HiringManagerEntry() {
   // Notifications dropdown
   const [showNotifications, setShowNotifications] = useState(false);
 
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   function showProfile() {
     setActiveTab("profile");
   }
@@ -237,26 +239,26 @@ export default function HiringManagerEntry() {
   return (
     <div className="shell">
       <Sidebar
-        user={user}
-        logout={logout}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onOpenProfile={showProfile}
         candidateCount={candidates.length}
         approvalCount={approvals.length}
         roleCount={rolesList.length}
+        mobileOpen={mobileOpen}
+        onCloseMobile={() => setMobileOpen(false)}
       />
 
-      <div className="main-shell">
+      <div className="main-shell md:ml-[260px]">
         <Topbar
-          userName={user?.name}
+          user={user}
+          onOpenProfile={showProfile}
+          logout={logout}
           pendingCount={approvals.length}
-          showNotifications={showNotifications}
-          setShowNotifications={setShowNotifications}
+          onToggleMobile={() => setMobileOpen(!mobileOpen)}
         />
 
         {activeTab === "profile" ? (
-          <Profile user={user} onBack={() => setActiveTab("overview")} />
+          <Profile user={user} />
         ) : (
         <main className="content-area">
           {activeTab !== "overview" && actionMessage && (
