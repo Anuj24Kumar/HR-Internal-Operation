@@ -3,9 +3,7 @@ const Intern = require("../../models/Intern/Intern");
 // GET LOGGED-IN INTERN PROFILE
 const getMyInternProfile = async (req, res) => {
   try {
-    const intern = await Intern.findOne({
-      user: req.user.id,
-    })
+    const intern = await Intern.findOne({ $or: [{ _id: req.user.id }, { user: req.user.id }] })
       .populate("user", "firstName lastName email phone profileImage")
       .populate("mentor", "firstName lastName email");
 

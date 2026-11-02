@@ -154,7 +154,7 @@ const getUserById = async (req, res) => {
 const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, role, hiringManagerId, password } = req.body;
+    const { name, email, role, hiringManagerId, password, department, designation, position } = req.body;
 
     const user = await User.findById(id);
     if (!user) {
@@ -199,14 +199,43 @@ const updateUser = async (req, res) => {
 
     let roleChanged = false;
     if (role && role !== user.role) {
-      user.role = role;
+      const normalizedRole = role === "hiring-manager" ? "hiring_manager" : role;
+      user.role = normalizedRole;
       roleChanged = true;
+
+      // Handle role-specific fields when role changes (e.g. candidate -> employee or intern)
+      if (normalizedRole === "employee") {
+        if (!user.empId) {
+          user.empId = `EMP-${Math.floor(1000 + Math.random() * 9000)}`;
+          user.employeeCode = user.empId;
+        }
+        if (!user.designation && (designation || user.position)) {
+          user.designation = designation || user.position;
+        }
+        if (!user.joiningDate) {
+          user.joiningDate = new Date();
+        }
+        user.selectedAs = "employee";
+      } else if (normalizedRole === "intern") {
+        user.selectedAs = "intern";
+        if (!user.track && (position || user.position)) {
+          user.track = position || user.position;
+        }
+        user.onboardingStatus = "In Progress";
+      } else if (normalizedRole === "candidate") {
+        user.selectedAs = null;
+      }
     }
 
     if (name) user.name = name.trim();
+    if (department !== undefined) user.department = department.trim();
+    if (designation !== undefined) user.designation = designation.trim();
+    if (position !== undefined) user.position = position.trim();
     if (hiringManagerId !== undefined) user.hiringManagerId = hiringManagerId || null;
-    if (password) {
-      user.passwordHash = await bcrypt.hash(password, 10);
+    if (password && typeof password === "string" && password.trim()) {
+      const hash = await bcrypt.hash(password.trim(), 10);
+      user.password = hash;
+      user.passwordHash = hash;
     }
 
     await user.save();

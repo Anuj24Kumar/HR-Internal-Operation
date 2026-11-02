@@ -21,12 +21,15 @@ const interviewRoundSchema = new mongoose.Schema(
 
 const candidateSchema = new mongoose.Schema(
   {
-    user: { type: mongoose.Schema.Types.ObjectId, ref: "User", unique: true, sparse: true },
+    role: { type: String, default: "candidate", index: true },
+    user: { type: mongoose.Schema.Types.ObjectId, ref: "User", sparse: true },
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     name: { type: String, trim: true, default: "" },
+    firstName: { type: String, trim: true, default: "" },
+    lastName: { type: String, trim: true, default: "" },
     email: { type: String, lowercase: true, trim: true, default: "", index: true },
     phone: { type: String, trim: true, default: null },
-    position: { type: String, required: true, trim: true },
+    position: { type: String, trim: true, default: "Candidate" },
     department: { type: String, trim: true, default: null },
     source: { type: String, trim: true, default: "Direct" },
     applicationSource: { type: String, trim: true, default: "Direct" },
@@ -62,7 +65,22 @@ const candidateSchema = new mongoose.Schema(
     archived: { type: Boolean, default: false },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   },
-  { timestamps: true }
+  { timestamps: true, collection: "users" }
 );
 
-module.exports = mongoose.model("Candidate", candidateSchema);
+candidateSchema.pre("validate", function () {
+  this.role = "candidate";
+  if (!this.name && (this.firstName || this.lastName)) {
+    this.name = [this.firstName, this.lastName].filter(Boolean).join(" ");
+  }
+  if (!this.user) {
+    this.user = this._id;
+  }
+  if (!this.userId) {
+    this.userId = this._id;
+  }
+});
+
+module.exports =
+  mongoose.models.Candidate ||
+  mongoose.model("Candidate", candidateSchema, "users");

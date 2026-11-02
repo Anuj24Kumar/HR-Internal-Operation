@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { getMyOffer } from "../services/candidateService.js";
 import EmptyState from "../components/EmptyState.jsx";
@@ -54,7 +53,14 @@ export default function MyOffer() {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err.message || "Unable to load your offer.");
+          // If no offer is available or 404, do not show repeated red error banner
+          const msg = String(err.message || "").toLowerCase();
+          if (err.status === 404 || msg.includes("no offer")) {
+            setOffer(null);
+            setError("");
+          } else {
+            setError(err.message || "Unable to load your offer.");
+          }
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -130,59 +136,57 @@ export default function MyOffer() {
 
           <div className="grid grid-cols-1 gap-6 p-6 sm:grid-cols-2 lg:grid-cols-3 sm:p-8">
             <div>
-              <p className="text-sm text-slate-500">Offer Type</p>
-              <p className="mt-2 font-semibold capitalize text-slate-900">
+              <p className="text-xs text-slate-500">Offer Type</p>
+              <p className="mt-2 font-medium text-slate-900">
                 {offer.offerType || "Not available"}
               </p>
             </div>
 
             <div>
-              <p className="text-sm text-slate-500">
-                Salary / Stipend
-              </p>
-              <p className="mt-2 font-semibold text-slate-900">
+              <p className="text-xs text-slate-500">Compensation</p>
+              <p className="mt-2 font-medium text-slate-900">
                 {formatAmount(offer.salary, offer.currency || "INR")}
               </p>
             </div>
 
             <div>
-              <p className="text-sm text-slate-500">Joining Date</p>
-              <p className="mt-2 font-semibold text-slate-900">
+              <p className="text-xs text-slate-500">Proposed Joining Date</p>
+              <p className="mt-2 font-medium text-slate-900">
                 {formatDate(offer.joiningDate)}
               </p>
             </div>
 
             <div>
-              <p className="text-sm text-slate-500">Offer Created</p>
-              <p className="mt-2 font-semibold text-slate-900">
+              <p className="text-xs text-slate-500">Issued On</p>
+              <p className="mt-2 font-medium text-slate-900">
                 {formatDate(offer.createdAt)}
               </p>
             </div>
 
             <div>
-              <p className="text-sm text-slate-500">Offer Expiry</p>
-              <p className="mt-2 font-semibold text-slate-900">
+              <p className="text-xs text-slate-500">Expiry Date</p>
+              <p className="mt-2 font-medium text-slate-900">
                 {formatDate(offer.expiryDate || offer.expiresAt)}
               </p>
             </div>
 
             <div>
-              <p className="text-sm text-slate-500">Approval Status</p>
-              <p className="mt-2 font-semibold text-slate-900">
+              <p className="text-xs text-slate-500">Approval Status</p>
+              <p className="mt-2 font-medium text-slate-900">
                 {offer.approvalStatus || "Not available"}
               </p>
             </div>
           </div>
 
           {offer.pdfUrl && (
-            <div className="border-t border-slate-100 p-6 sm:px-8">
+            <div className="border-t border-slate-100 p-6 sm:p-8">
               <a
                 href={offer.pdfUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
+                className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
               >
-                View Offer Letter
+                View Offer Letter (PDF)
               </a>
             </div>
           )}
@@ -191,4 +195,3 @@ export default function MyOffer() {
     </div>
   );
 }
-

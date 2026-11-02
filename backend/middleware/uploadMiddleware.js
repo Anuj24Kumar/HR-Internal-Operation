@@ -35,25 +35,27 @@ const storage = multer.diskStorage({
 const fileFilter = (req, file, cb) => {
   const allowedMimeTypes = [
     "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "image/jpeg",
     "image/png",
   ];
 
-  const allowedExtensions = [".pdf", ".jpg", ".jpeg", ".png"];
+  const allowedExtensions = [".pdf", ".doc", ".docx", ".jpg", ".jpeg", ".png"];
 
   const extension = path
     .extname(file.originalname)
     .toLowerCase();
 
   if (
-    allowedMimeTypes.includes(file.mimetype) &&
+    allowedMimeTypes.includes(file.mimetype) ||
     allowedExtensions.includes(extension)
   ) {
     return cb(null, true);
   }
 
   cb(
-    new Error("Only PDF, JPG, JPEG and PNG files are allowed")
+    new Error("Only PDF, DOC, DOCX, JPG, JPEG and PNG files are allowed")
   );
 };
 
@@ -62,7 +64,7 @@ const upload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5 MB maximum
+    fileSize: 10 * 1024 * 1024, // 10 MB maximum
     files: 1,
   },
 });

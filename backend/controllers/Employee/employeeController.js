@@ -4,7 +4,7 @@ const EmploymentHistory = require("../../models/Employee/EmploymentHistory");
 // GET /api/employee/profile
 const getMyEmployeeProfile = async (req, res) => {
   try {
-    const employee = await Employee.findOne({ user: req.user.id })
+    const employee = await Employee.findOne({ $or: [{ _id: req.user.id }, { user: req.user.id }, { userId: req.user.id }] })
       .populate("user", "firstName lastName email phone profileImage")
       .populate("manager", "firstName lastName email");
 
@@ -33,7 +33,7 @@ const getMyEmployeeProfile = async (req, res) => {
 // GET /api/employee/profile/history
 const getMyEmploymentHistory = async (req, res) => {
   try {
-    const employee = await Employee.findOne({ user: req.user.id });
+    const employee = await Employee.findOne({ $or: [{ _id: req.user.id }, { user: req.user.id }, { userId: req.user.id }] });
 
     if (!employee) {
       return res.status(404).json({
@@ -67,7 +67,7 @@ const getMyEmploymentHistory = async (req, res) => {
 // GET /api/employee/profile/salary
 const getMySalaryBreakdown = async (req, res) => {
   try {
-    const employee = await Employee.findOne({ user: req.user.id }).select(
+    const employee = await Employee.findOne({ $or: [{ _id: req.user.id }, { user: req.user.id }, { userId: req.user.id }] }).select(
       "employeeCode department designation salary joiningDate"
     );
 

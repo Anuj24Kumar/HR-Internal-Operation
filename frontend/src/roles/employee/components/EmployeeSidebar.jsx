@@ -1,6 +1,5 @@
 import {
   LayoutDashboard,
-  User,
   Clock,
   CreditCard,
   Files,
@@ -11,7 +10,6 @@ import UnifiedSidebar from "../../../components/UnifiedSidebar.jsx";
 
 const employeeTabs = [
   { label: "Overview", path: "/employee", icon: LayoutDashboard, end: true },
-  { label: "My Profile", path: "/employee/profile", icon: User },
   { label: "Employment History", path: "/employee/history", icon: Clock },
   { label: "My Salary", path: "/employee/salary", icon: CreditCard },
   { label: "My Documents", path: "/employee/documents", icon: Files },

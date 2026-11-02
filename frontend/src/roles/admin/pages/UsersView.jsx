@@ -28,7 +28,7 @@ import Modal from "../components/Modal.jsx";
 const AVAILABLE_ROLES = [
   { value: "admin", label: "Admin" },
   { value: "hr", label: "HR" },
-  { value: "hiring-manager", label: "Hiring Manager" },
+  { value: "hiring_manager", label: "Hiring Manager" },
   { value: "interviewer", label: "Interviewer" },
   { value: "candidate", label: "Candidate" },
   { value: "intern", label: "Intern" },
@@ -121,10 +121,12 @@ export default function UsersView() {
   function openEditModal(user) {
     setSelectedUser(user);
     setFormData({
-      name: user.name,
-      email: user.email,
+      name: user.name || "",
+      email: user.email || "",
       password: "",
-      role: user.role,
+      role: user.role === "hiring-manager" ? "hiring_manager" : (user.role || "candidate"),
+      department: user.department || "",
+      designation: user.designation || user.position || (user.candidateId?.position || user.employeeId?.designation || ""),
     });
     setEditModalOpen(true);
   }
@@ -135,15 +137,18 @@ export default function UsersView() {
     setSubmitting(true);
     try {
       const payload = {
-        name: formData.name,
-        email: formData.email,
+        name: formData.name.trim(),
+        email: formData.email.trim(),
         role: formData.role,
+        department: formData.department ? formData.department.trim() : "",
+        designation: formData.designation ? formData.designation.trim() : "",
+        position: formData.designation ? formData.designation.trim() : "",
       };
       if (formData.password.trim()) {
         payload.password = formData.password.trim();
       }
       await updateUser(selectedUser._id, payload);
-      setAlert({ type: "success", message: `User "${formData.name}" updated successfully!` });
+      setAlert({ type: "success", message: `User "${formData.name}" role updated to "${formData.role}" successfully!` });
       setEditModalOpen(false);
       loadUsers();
     } catch (err) {
@@ -341,7 +346,6 @@ export default function UsersView() {
                 <th>User</th>
                 <th>Role</th>
                 <th>Status</th>
-                <th>Linked Entity</th>
                 <th>Created At</th>
                 <th style={{ textAlign: "right" }}>Actions</th>
               </tr>
@@ -349,7 +353,7 @@ export default function UsersView() {
             <tbody>
               {users.length === 0 && !loading && (
                 <tr>
-                  <td colSpan="6" style={{ textAlign: "center", padding: "40px 20px", color: "#94a3b8" }}>
+                  <td colSpan="5" style={{ textAlign: "center", padding: "40px 20px", color: "#94a3b8" }}>
                     No users found matching current filters.
                   </td>
                 </tr>
@@ -392,19 +396,17 @@ export default function UsersView() {
                       </div>
                     </td>
                     <td>
-                      <RoleBadge role={u.role} />
+                      <div style={{ display: "flex", flexDirection: "column", gap: "2px", alignItems: "flex-start" }}>
+                        <RoleBadge role={u.role} />
+                        {(u.position || u.designation || u.candidateId?.position || u.employeeId?.designation) && (
+                          <span style={{ fontSize: "11px", color: "#64748b", fontWeight: "500" }}>
+                            {u.position || u.designation || u.candidateId?.position || u.employeeId?.designation}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <StatusBadge active={u.isActive} />
-                    </td>
-                    <td style={{ fontSize: "12px", color: "#64748b" }}>
-                      {u.employeeId ? (
-                        <span>Emp ID: <strong>{u.employeeId.empId || "Assigned"}</strong></span>
-                      ) : u.candidateId ? (
-                        <span>Candidate Position: <strong>{u.candidateId.position || "Applicant"}</strong></span>
-                      ) : (
-                        <span>—</span>
-                      )}
                     </td>
                     <td style={{ fontSize: "12.5px", color: "#64748b" }}>
                       {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}
@@ -652,7 +654,30 @@ export default function UsersView() {
               ))}
             </select>
             <div className="admin-form-hint">
-              Security Notice: System prevents demoting or removing the last active Admin.
+              Select any role to change or promote this user (e.g. Candidate to Employee, Intern, HR, or other roles).
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            <div className="admin-form-group">
+              <label className="admin-form-label">Designation / Position</label>
+              <input
+                type="text"
+                className="admin-input"
+                placeholder="e.g. Frontend Developer"
+                value={formData.designation || ""}
+                onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
+              />
+            </div>
+            <div className="admin-form-group">
+              <label className="admin-form-label">Department</label>
+              <input
+                type="text"
+                className="admin-input"
+                placeholder="e.g. Engineering"
+                value={formData.department || ""}
+                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+              />
             </div>
           </div>
         </form>
@@ -715,20 +740,17 @@ export default function UsersView() {
               </div>
             </div>
 
-            {selectedUser.employeeId && (
-              <div style={{ padding: "12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px" }}>
-                <h4 style={{ margin: "0 0 6px", fontSize: "13px", color: "#166534" }}>Linked Employee Profile</h4>
-                <div style={{ fontSize: "12.5px", color: "#15803d" }}>
-                  Emp ID: <strong>{selectedUser.employeeId.empId}</strong> · {selectedUser.employeeId.designation} · {selectedUser.employeeId.department}
-                </div>
-              </div>
-            )}
-
-            {selectedUser.candidateId && (
-              <div style={{ padding: "12px", background: "#fefce8", border: "1px solid #fef08a", borderRadius: "8px" }}>
-                <h4 style={{ margin: "0 0 6px", fontSize: "13px", color: "#854d0e" }}>Linked Candidate Profile</h4>
-                <div style={{ fontSize: "12.5px", color: "#a16207" }}>
-                  Position: <strong>{selectedUser.candidateId.position}</strong> · Status: {selectedUser.candidateId.status}
+            {(selectedUser.position || selectedUser.designation || selectedUser.candidateId?.position || selectedUser.employeeId?.designation) && (
+              <div style={{ padding: "12px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px" }}>
+                <h4 style={{ margin: "0 0 6px", fontSize: "13px", color: "#0f172a" }}>Role & Profile Details</h4>
+                <div style={{ fontSize: "12.5px", color: "#475569" }}>
+                  Role: <strong style={{ textTransform: "capitalize" }}>{selectedUser.role}</strong>
+                  {(selectedUser.position || selectedUser.candidateId?.position) && (
+                    <span> · Position: <strong>{selectedUser.position || selectedUser.candidateId?.position}</strong></span>
+                  )}
+                  {(selectedUser.designation || selectedUser.employeeId?.designation) && (
+                    <span> · Designation: <strong>{selectedUser.designation || selectedUser.employeeId?.designation}</strong></span>
+                  )}
                 </div>
               </div>
             )}

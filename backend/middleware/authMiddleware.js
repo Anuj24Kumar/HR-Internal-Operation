@@ -36,7 +36,7 @@ const protect = async (req, res, next) => {
       });
     }
 
-    if (!user.isActive || user.status !== "active") {
+    if (user.isActive === false || user.status === "inactive" || user.status === "suspended") {
       return res.status(403).json({
         success: false,
         message: "Your account is not active",
@@ -58,16 +58,18 @@ const protect = async (req, res, next) => {
     ) {
       return res.status(401).json({
         success: false,
-        message: "Invalid or expired authentication token",
+        message: "Invalid or expired token. Please log in again.",
       });
     }
-
-    console.error("Authentication error:", error.message);
+    console.error("Auth middleware error:", error.message);
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Authentication failed",
     });
   }
 };
 
-module.exports = { protect, verifyToken: protect };
+module.exports = {
+  protect,
+  verifyToken: protect,
+};

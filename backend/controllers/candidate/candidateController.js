@@ -5,6 +5,7 @@ const Candidate = require("../../models/Candidate");
 const User = require("../../models/User");
 const Document = require("../../models/Document");
 const Offer = require("../../models/Offer");
+const Application = require("../../models/Application");
 const AuditLogs = require("../../models/AuditLogs");
 
 const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
@@ -482,7 +483,217 @@ const getMyOffer = async (req, res) => {
   }
 };
 
+
+const applyJob = async (req, res) => {
+  try {
+    const { position, jobType } = req.body;
+    if (!position || typeof position !== "string" || !position.trim()) {
+      cleanupUploadedFile(req);
+      return res.status(400).json({
+        success: false,
+        message: "Position is required",
+      });
+    }
+
+    const validJobType =
+      jobType === "Internship" || jobType === "internship" ? "Internship" : "Full-time";
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      cleanupUploadedFile(req);
+      return res.status(404).json({
+        success: false,
+        message: "User account not found",
+      });
+    }
+
+    const candidateName =
+      user.name ||
+      [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+      req.body.candidateName ||
+      "Candidate";
+
+    const email = user.email;
+    const phone = user.phone || req.body.phone || "";
+
+    const resumeUrl = req.file
+      ? `/uploads/candidate-documents/${req.file.filename}`
+      : req.body.resumeUrl || "";
+
+    const resumeOriginalName = req.file
+      ? req.file.originalname
+      : req.body.resumeOriginalName || "";
+
+    const application = await Application.create({
+      candidateId: user._id,
+      candidateName,
+      email,
+      phone,
+      position: position.trim(),
+      jobType: validJobType,
+      resumeUrl,
+      resumeOriginalName,
+      status: "Applied",
+      appliedAt: new Date(),
+      timeline: [
+        {
+          stage: "Applied",
+          title: "Application Submitted",
+          description: `Application for ${position.trim()} (${validJobType}) submitted successfully.`,
+          completed: true,
+          date: new Date(),
+        },
+        {
+          stage: "Screening",
+          title: "Profile Screening",
+          description: "Your application and qualifications are being reviewed by the hiring team.",
+          completed: false,
+          date: null,
+        },
+        {
+          stage: "Interview",
+          title: "Interview Scheduled",
+          description: "Technical assessment and HR evaluation rounds.",
+          completed: false,
+          date: null,
+        },
+        {
+          stage: "Selected",
+          title: "Final Decision & Offer",
+          description: "Candidate selection and employment/internship letter issuance.",
+          completed: false,
+          date: null,
+        },
+      ],
+    });
+
+    user.position = position.trim();
+    if (resumeUrl) user.resumeUrl = resumeUrl;
+    user.status = "applied";
+    await user.save();
+
+    return res.status(201).json({
+      success: true,
+      message: "Application submitted successfully",
+      data: application,
+      application,
+    });
+  } catch (error) {
+    cleanupUploadedFile(req);
+    console.error("Apply job error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to submit application: " + error.message,
+    });
+  }
+};
+
+const getMyApplications = async (req, res) => {
+  try {
+    let applications = await Application.find({ candidateId: req.user.id }).sort({ createdAt: -1 });
+
+    if (applications.length === 0) {
+      const user = await User.findById(req.user.id);
+      if (user && user.position) {
+        const fallbackApp = await Application.create({
+          candidateId: user._id,
+          candidateName:
+            user.name ||
+            [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+            "Candidate",
+          email: user.email,
+          phone: user.phone || "",
+          position: user.position,
+          jobType: "Full-time",
+          resumeUrl: user.resumeUrl || "",
+          status: "Applied",
+          appliedAt: user.createdAt || new Date(),
+          timeline: [
+            {
+              stage: "Applied",
+              title: "Application Submitted",
+              description: `Application for ${user.position} submitted.`,
+              completed: true,
+              date: user.createdAt || new Date(),
+            },
+            {
+              stage: "Screening",
+              title: "Profile Screening",
+              description: "Your application is under review.",
+              completed: false,
+              date: null,
+            },
+            {
+              stage: "Interview",
+              title: "Interview Rounds",
+              description: "Awaiting interview scheduling.",
+              completed: false,
+              date: null,
+            },
+            {
+              stage: "Selected",
+              title: "Final Decision",
+              description: "Final outcome & onboarding.",
+              completed: false,
+              date: null,
+            },
+          ],
+        });
+        applications = [fallbackApp];
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      applications,
+      data: applications,
+    });
+  } catch (error) {
+    console.error("Get my applications error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch applications",
+    });
+  }
+};
+
+const getApplicationById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!isValidId(id)) {
+      return res.status(400).json({ success: false, message: "Invalid application ID" });
+    }
+
+    const application = await Application.findById(id);
+    if (!application) {
+      return res.status(404).json({ success: false, message: "Application not found" });
+    }
+
+    if (
+      req.user.role === "candidate" &&
+      String(application.candidateId) !== String(req.user.id)
+    ) {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      application,
+      data: application,
+    });
+  } catch (error) {
+    console.error("Get application by ID error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch application details",
+    });
+  }
+};
+
 module.exports = {
+  applyJob,
+  getMyApplications,
+  getApplicationById,
   createCandidate,
   getCandidates,
   getCandidateById,

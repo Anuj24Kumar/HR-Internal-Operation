@@ -21,16 +21,48 @@ const {
   updateCandidateDocument,
   deleteCandidateDocument,
   getMyOffer,
+  applyJob,
+  getMyApplications,
+  getApplicationById,
 } = require("../../controllers/candidate/candidateController");
 
 router.get("/", protect, authorize("admin", "hr"), getCandidates);
 router.post("/", protect, authorize("hr"), createCandidate);
+
+// Candidate application routes
+router.post(
+  "/apply",
+  protect,
+  requireCandidate,
+  upload.single("resume"),
+  applyJob
+);
+router.post(
+  "/application",
+  protect,
+  requireCandidate,
+  upload.single("resume"),
+  applyJob
+);
+router.get(
+  "/my-applications",
+  protect,
+  requireCandidate,
+  getMyApplications
+);
+router.get(
+  "/applications/:id",
+  protect,
+  requireCandidate,
+  getApplicationById
+);
 router.get(
   "/application",
   protect,
   requireCandidate,
   getMyApplication
 );
+
 router.get(
   "/profile",
   protect,

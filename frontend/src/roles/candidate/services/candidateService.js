@@ -1,4 +1,3 @@
-
 import { apiRequest } from "../../../api.js";
 
 function getAuthHeaders() {
@@ -19,6 +18,26 @@ export function getMyApplication() {
   });
 }
 
+export function getMyApplications() {
+  return apiRequest("/candidates/my-applications", {
+    headers: getAuthHeaders(),
+  });
+}
+
+export function getApplicationDetails(id) {
+  return apiRequest(`/candidates/applications/${id}`, {
+    headers: getAuthHeaders(),
+  });
+}
+
+export function applyForJob(formData) {
+  return apiRequest("/candidates/apply", {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: formData,
+  });
+}
+
 export function getMyProfile() {
   return apiRequest("/candidates/profile", {
     headers: getAuthHeaders(),
@@ -36,4 +55,3 @@ export function getMyOffer() {
     headers: getAuthHeaders(),
   });
 }
-

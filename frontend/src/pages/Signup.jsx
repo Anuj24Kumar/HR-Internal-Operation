@@ -7,25 +7,11 @@ import {
   EyeOff,
   User,
   Phone,
-  Briefcase,
   Loader2,
   AlertCircle,
 } from "lucide-react";
 import { apiRequest } from "../api.js";
 import "./auth.css";
-
-const COMMON_POSITIONS = [
-  "Software Engineer",
-  "Frontend Developer",
-  "Backend Developer",
-  "Full Stack Engineer",
-  "DevOps Engineer",
-  "Product Manager",
-  "UI/UX Designer",
-  "HR Operations Specialist",
-  "Finance Analyst",
-  "Quality Assurance Engineer",
-];
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -62,7 +48,6 @@ export default function Signup() {
           lastName: form.lastName.trim(),
           email: form.email.trim(),
           phone: form.phone.trim(),
-          position: form.position.trim(),
           password: form.password,
         }),
       });
@@ -158,43 +143,19 @@ export default function Signup() {
             </div>
           </div>
 
-          {/* Phone & Position Row */}
-          <div className="auth-row-2">
-            <div className="auth-field">
-              <label className="auth-label">Phone number</label>
-              <div className="auth-input-wrap">
-                <Phone size={16} className="auth-input-icon" />
-                <input
-                  name="phone"
-                  type="tel"
-                  placeholder="+1 (555) 000-0000"
-                  className="auth-input has-icon"
-                  value={form.phone}
-                  onChange={updateField}
-                />
-              </div>
-            </div>
-
-            <div className="auth-field">
-              <label className="auth-label">Position applying for *</label>
-              <div className="auth-input-wrap">
-                <Briefcase size={16} className="auth-input-icon" />
-                <input
-                  name="position"
-                  list="position-suggestions"
-                  autoComplete="organization-title"
-                  required
-                  placeholder="e.g. Software Engineer"
-                  className="auth-input has-icon"
-                  value={form.position}
-                  onChange={updateField}
-                />
-                <datalist id="position-suggestions">
-                  {COMMON_POSITIONS.map((pos) => (
-                    <option key={pos} value={pos} />
-                  ))}
-                </datalist>
-              </div>
+          {/* Phone Number */}
+          <div className="auth-field">
+            <label className="auth-label">Phone number</label>
+            <div className="auth-input-wrap">
+              <Phone size={16} className="auth-input-icon" />
+              <input
+                name="phone"
+                type="tel"
+                placeholder="+1 (555) 000-0000"
+                className="auth-input has-icon"
+                value={form.phone}
+                onChange={updateField}
+              />
             </div>
           </div>
 

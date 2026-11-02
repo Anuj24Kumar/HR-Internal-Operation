@@ -1,6 +1,8 @@
 const User = require("./User");
 const Candidate = require("./Candidate");
 const Employee = require("./Employee");
+const Intern = require("./Intern/Intern");
+const Application = require("./Application");
 const Offer = require("./Offer");
 const LetterTemplate = require("./LetterTemplate");
 const Letter = require("./Letter");
@@ -17,6 +19,8 @@ module.exports = {
   User,
   Candidate,
   Employee,
+  Intern,
+  Application,
   Offer,
   LetterTemplate,
   Letter,
