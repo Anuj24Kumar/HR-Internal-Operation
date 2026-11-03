@@ -6,12 +6,24 @@ const { protect } = require("../middleware/authMiddleware");
 const { authorize } = require("../middleware/roleMiddleware");
 
 const {
+  getInterviewers,
+  getAllInterviews,
   getCandidateInterviews,
   createInterview,
   getInterviewById,
   updateInterview,
   deleteInterview,
 } = require("../controllers/interviewController");
+
+router.get("/interviewers", protect, authorize("hr"), getInterviewers);
+
+// Get all interviews
+router.get(
+  "/",
+  protect,
+  authorize("admin", "hr", "hiring_manager", "interviewer"),
+  getAllInterviews
+);
 
 // Get all interviews for a candidate
 router.get(

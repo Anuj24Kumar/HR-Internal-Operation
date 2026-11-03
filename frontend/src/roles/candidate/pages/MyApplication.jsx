@@ -3,7 +3,17 @@ import { getMyApplication } from "../services/candidateService.js";
 import ApplicationStatusBadge from "../components/ApplicationStatusBadge.jsx";
 import ApplicationTimeline from "../components/ApplicationTimeline.jsx";
 import EmptyState from "../components/EmptyState.jsx";
-import { Briefcase, Download, ExternalLink, FileText, Mail, Phone, User } from "lucide-react";
+import {
+  Briefcase,
+  CalendarDays,
+  Download,
+  ExternalLink,
+  FileText,
+  Mail,
+  Phone,
+  User,
+  Video,
+} from "lucide-react";
 
 function formatDate(value) {
   if (!value) return "Not available";
@@ -17,6 +27,34 @@ function formatDate(value) {
     month: "long",
     year: "numeric",
   });
+}
+
+function formatDateTime(value) {
+  if (!value) return "Not scheduled";
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime())
+    ? "Not scheduled"
+    : date.toLocaleString("en-IN", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+}
+
+function getInterviewerName(interviewer) {
+  if (!interviewer) return "Not assigned";
+  if (typeof interviewer === "string") return "Assigned interviewer";
+
+  return (
+    interviewer.name ||
+    [interviewer.firstName, interviewer.lastName].filter(Boolean).join(" ") ||
+    interviewer.email ||
+    "Assigned interviewer"
+  );
 }
 
 export default function MyApplication() {
@@ -198,6 +236,160 @@ export default function MyApplication() {
                 </p>
               </div>
             </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+            <div className="flex items-start gap-3 border-b border-slate-100 pb-5">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-violet-50 text-violet-700">
+                <CalendarDays className="h-5 w-5" />
+              </span>
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Interview Details</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Your assigned interview schedule and meeting link.
+                </p>
+              </div>
+            </div>
+
+            {Array.isArray(application.interviews) && application.interviews.length > 0 ? (
+              <div className="mt-5 space-y-4">
+                {application.interviews.map((interview) => (
+                  <article
+                    key={interview._id}
+                    className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5"
+                  >
+                    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                      <div>
+                        <h3 className="font-semibold text-slate-900">
+                          {interview.roundName || "Interview"}
+                        </h3>
+                        <p className="mt-1 text-sm capitalize text-slate-500">
+                          {interview.interviewType || "Interview"} round · {interview.status || "Scheduled"}
+                        </p>
+                      </div>
+                      {interview.meetingLink ? (
+                        <a
+                          href={interview.meetingLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                        >
+                          <Video className="h-4 w-4" />
+                          Join Interview
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      ) : (
+                        <span className="text-sm text-slate-500">Meeting link not provided</span>
+                      )}
+                    </div>
+
+                    <div className="mt-4 grid gap-4 border-t border-slate-200 pt-4 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs text-slate-500">Date and time</p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">
+                          {formatDateTime(interview.scheduledAt)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Interviewer</p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">
+                          {getInterviewerName(interview.interviewerId)}
+                        </p>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-5 rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                No interview has been assigned yet.
+              </p>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+            <div className="border-b border-slate-100 pb-5">
+              <h2 className="text-lg font-bold text-slate-900">Submitted Details</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Details submitted with your application.
+              </p>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
+                <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                  <User className="h-4 w-4 text-slate-400" />
+                  Candidate Full Name
+                </div>
+                <p className="mt-2 text-sm font-semibold text-slate-900">
+                  {application.candidateName || "Candidate"}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
+                <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                  <Mail className="h-4 w-4 text-slate-400" />
+                  Email Address
+                </div>
+                <p className="mt-2 text-sm font-semibold text-slate-900">
+                  {application.email || "—"}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
+                <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                  <Phone className="h-4 w-4 text-slate-400" />
+                  Phone Number
+                </div>
+                <p className="mt-2 text-sm font-semibold text-slate-900">
+                  {application.phone || "—"}
+                </p>
+              </div>
+            </div>
+
+            {application.resumeUrl ? (
+              <div className="mt-6 flex flex-col items-start justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/40 p-4 sm:flex-row sm:items-center">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
+                    <FileText className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">
+                      {application.resumeOriginalName || "Candidate_Resume.pdf"}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Uploaded resume for this application
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <a
+                    href={application.resumeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3.5 py-2 text-xs font-semibold text-blue-700 shadow-2xs hover:bg-blue-50 transition"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    View Resume
+                  </a>
+                  <a
+                    href={application.resumeUrl}
+                    download={application.resumeOriginalName || "Candidate_Resume.pdf"}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-blue-700 transition"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Download
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-6 rounded-xl border border-dashed border-slate-200 p-4 text-center">
+                <p className="text-sm text-slate-500">
+                  No resume document uploaded for this application.
+                </p>
+              </div>
+            )}
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">

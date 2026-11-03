@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   X,
   FileText,
@@ -15,9 +16,14 @@ import {
   CheckCircle2,
   Download,
   Award,
+  Star,
+  ThumbsUp,
+  ThumbsDown,
+  Send,
+  Video,
 } from "lucide-react";
 
-const STATUSES = ["applied", "screening", "interview", "selected", "rejected"];
+const STATUSES = ["applied", "interview", "selected", "offer", "rejected"];
 
 function formatDate(value) {
   if (!value) return "Not available";
@@ -38,6 +44,7 @@ function StatusBadge({ status }) {
     screening: "bg-amber-50 text-amber-700 ring-amber-600/20",
     interview: "bg-violet-50 text-violet-700 ring-violet-600/20",
     selected: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
+    offer: "bg-teal-50 text-teal-700 ring-teal-600/20",
     rejected: "bg-rose-50 text-rose-700 ring-rose-600/20",
   };
 
@@ -60,7 +67,9 @@ export default function CandidateDetailsModal({
   candidate,
   onStatusUpdate,
   onSelectCandidate,
+  onGenerateOffer,
 }) {
+  const navigate = useNavigate();
   const [copiedField, setCopiedField] = useState(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
@@ -86,15 +95,29 @@ export default function CandidateDetailsModal({
   const resumeUrl = candidate.resumeUrl;
   const resumeName = candidate.resumeOriginalName || "Candidate_Resume.pdf";
   const timeline = Array.isArray(candidate.timeline) ? candidate.timeline : [];
+  const interviews = Array.isArray(candidate.interviews) ? candidate.interviews : [];
+  const recommendation = candidate.hiringRecommendation;
+  const normalizedStatus = String(candidate.status || "").toLowerCase();
 
   const handleStatusChange = async (e) => {
     const newStatus = e.target.value;
     if (!newStatus || newStatus === candidate.status) return;
     setUpdatingStatus(true);
     try {
-      await onStatusUpdate(candidate, newStatus);
+      if (onStatusUpdate) {
+        await onStatusUpdate(candidate, newStatus);
+      }
     } finally {
       setUpdatingStatus(false);
+    }
+  };
+
+  const handleGenerateOfferClick = () => {
+    if (onGenerateOffer) {
+      onGenerateOffer(candidate);
+    } else {
+      onClose();
+      navigate(`/hr/offers?candidateId=${candidate._id}&candidateName=${encodeURIComponent(candidateName)}&position=${encodeURIComponent(position)}`);
     }
   };
 
@@ -104,10 +127,10 @@ export default function CandidateDetailsModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="candidate-details-title"
-        className="relative my-auto w-full max-w-3xl rounded-2xl bg-white shadow-2xl transition-all"
+        className="relative my-auto w-full max-w-3xl rounded-2xl bg-white shadow-2xl transition-all max-h-[90vh] flex flex-col"
       >
         {/* Modal Header */}
-        <div className="flex items-start justify-between border-b border-slate-100 px-6 py-5">
+        <div className="flex items-start justify-between border-b border-slate-100 px-6 py-5 shrink-0">
           <div className="flex items-center gap-3.5">
             <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-blue-50 font-bold text-blue-700 text-lg">
               {String(candidateName).slice(0, 1).toUpperCase()}
@@ -118,19 +141,12 @@ export default function CandidateDetailsModal({
                   {candidateName}
                 </h2>
                 <StatusBadge status={candidate.status} />
-                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
-                  <Briefcase className="h-3 w-3 text-slate-500" />
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
                   {jobType}
                 </span>
-                {candidate.selectedAs && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
-                    <Award className="h-3 w-3" />
-                    Hired as {candidate.selectedAs}
-                  </span>
-                )}
               </div>
-              <p className="mt-1 text-xs text-slate-500">
-                Applied for <span className="font-semibold text-slate-700">{position}</span> &bull; Source: {source}
+              <p className="mt-0.5 text-xs text-slate-500">
+                Applied for <span className="font-medium text-slate-700">{position}</span>
               </p>
             </div>
           </div>
@@ -139,23 +155,23 @@ export default function CandidateDetailsModal({
             type="button"
             onClick={onClose}
             className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
-            aria-label="Close modal"
+            aria-label="Close dialog"
           >
             <X size={20} />
           </button>
         </div>
 
-        {/* Modal Content */}
-        <div className="max-h-[75vh] space-y-6 overflow-y-auto px-6 py-6">
-          {/* Quick Recruitment Actions Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+        {/* Modal Scrollable Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Quick Actions Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/90 bg-slate-50/70 p-3.5">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-700">Update Recruitment Stage:</span>
+              <span className="text-xs font-semibold text-slate-700">Change Status:</span>
               <select
-                disabled={updatingStatus}
-                value={STATUSES.includes(candidate.status) ? candidate.status : ""}
+                value={candidate.status?.toLowerCase() || "applied"}
                 onChange={handleStatusChange}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 shadow-2xs outline-none focus:border-blue-500"
+                disabled={updatingStatus}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500"
               >
                 {STATUSES.map((st) => (
                   <option key={st} value={st}>
@@ -165,27 +181,25 @@ export default function CandidateDetailsModal({
               </select>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                onSelectCandidate(candidate);
-              }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-2xs hover:bg-emerald-700 transition"
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              Select as Intern / Employee
-            </button>
+            {normalizedStatus === "selected" && (
+              <button
+                type="button"
+                onClick={handleGenerateOfferClick}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition"
+              >
+                <Send size={14} />
+                Generate Offer
+              </button>
+            )}
           </div>
 
-          {/* Submitted Details Grid */}
-          <div>
+          {/* Candidate Overview Card */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Application Information
+              Candidate Information
             </h3>
 
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {/* Applied Position */}
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5">
                 <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
                   <Briefcase className="h-4 w-4 text-slate-400" />
@@ -194,7 +208,6 @@ export default function CandidateDetailsModal({
                 <p className="mt-1.5 text-sm font-semibold text-slate-900">{position}</p>
               </div>
 
-              {/* Job Type */}
               <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5">
                 <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
                   <Clock className="h-4 w-4 text-slate-400" />
@@ -203,7 +216,6 @@ export default function CandidateDetailsModal({
                 <p className="mt-1.5 text-sm font-semibold text-slate-900">{jobType}</p>
               </div>
 
-              {/* Applied Date */}
               <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5">
                 <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
                   <Calendar className="h-4 w-4 text-slate-400" />
@@ -212,16 +224,6 @@ export default function CandidateDetailsModal({
                 <p className="mt-1.5 text-sm font-semibold text-slate-900">{appliedDate}</p>
               </div>
 
-              {/* Full Name */}
-              <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5">
-                <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-                  <User className="h-4 w-4 text-slate-400" />
-                  Full Name
-                </div>
-                <p className="mt-1.5 text-sm font-semibold text-slate-900">{candidateName}</p>
-              </div>
-
-              {/* Email */}
               <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5">
                 <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
                   <Mail className="h-4 w-4 text-slate-400" />
@@ -232,7 +234,6 @@ export default function CandidateDetailsModal({
                 </p>
               </div>
 
-              {/* Phone */}
               <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5">
                 <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
                   <Phone className="h-4 w-4 text-slate-400" />
@@ -241,39 +242,6 @@ export default function CandidateDetailsModal({
                 <p className="mt-1.5 text-sm font-semibold text-slate-900">{phone}</p>
               </div>
 
-              {/* Application ID */}
-              <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5">
-                <div className="flex items-center justify-between text-xs font-medium text-slate-500">
-                  <span className="flex items-center gap-1.5">
-                    <Hash className="h-4 w-4 text-slate-400" />
-                    Application ID
-                  </span>
-                  {applicationId !== "—" && (
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(applicationId, "appId")}
-                      className="inline-flex items-center gap-1 text-[10px] text-blue-600 hover:underline"
-                    >
-                      {copiedField === "appId" ? (
-                        <>
-                          <Check className="h-3 w-3 text-emerald-600" />
-                          <span className="text-emerald-600">Copied</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="h-3 w-3" />
-                          <span>Copy</span>
-                        </>
-                      )}
-                    </button>
-                  )}
-                </div>
-                <p className="mt-1.5 font-mono text-xs font-semibold text-slate-800 truncate" title={applicationId}>
-                  {applicationId}
-                </p>
-              </div>
-
-              {/* Candidate ID */}
               <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5">
                 <div className="flex items-center justify-between text-xs font-medium text-slate-500">
                   <span className="flex items-center gap-1.5">
@@ -304,19 +272,10 @@ export default function CandidateDetailsModal({
                   {candidateId}
                 </p>
               </div>
-
-              {/* Source */}
-              <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5">
-                <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-                  <Clock className="h-4 w-4 text-slate-400" />
-                  Source
-                </div>
-                <p className="mt-1.5 text-sm font-semibold text-slate-900">{source}</p>
-              </div>
             </div>
           </div>
 
-          {/* Submitted Resume / Document Section */}
+          {/* Submitted Resume Section */}
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Submitted Resume / Curriculum Vitae
@@ -361,6 +320,155 @@ export default function CandidateDetailsModal({
             )}
           </div>
 
+          {/* Interview Evaluation & Results Section */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                Interview Rounds & Feedback Evaluation
+              </h3>
+              <span className="text-xs font-semibold text-slate-500">
+                {interviews.length} Round{interviews.length === 1 ? "" : "s"} Assigned
+              </span>
+            </div>
+
+            {interviews.length === 0 ? (
+              <div className="mt-3 rounded-xl border border-dashed border-slate-200 p-4 text-center">
+                <p className="text-xs text-slate-500">No interview rounds assigned yet.</p>
+              </div>
+            ) : (
+              <div className="mt-3 space-y-3">
+                {interviews.map((round, idx) => {
+                  const interviewer = round.interviewerId;
+                  const interviewerName =
+                    typeof interviewer === "object"
+                      ? interviewer.name || [interviewer.firstName, interviewer.lastName].filter(Boolean).join(" ") || interviewer.email
+                      : "Assigned Interviewer";
+
+                  return (
+                    <div
+                      key={round._id || idx}
+                      className="rounded-xl border border-slate-200/90 bg-slate-50/60 p-4 space-y-3"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/60 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-slate-900">
+                            {round.roundName || `Round ${round.round || idx + 1}`}
+                          </span>
+                          <span className="rounded-md bg-blue-100 px-2 py-0.5 text-[11px] font-semibold capitalize text-blue-700">
+                            {round.interviewType || "technical"}
+                          </span>
+                          <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold capitalize ${
+                            round.status === "completed" ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"
+                          }`}>
+                            {round.status || "scheduled"}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          {round.score != null && (
+                            <span className="rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-bold text-violet-800">
+                              Score: {round.score}/100
+                            </span>
+                          )}
+
+                          {round.rating != null ? (
+                            <div className="flex items-center gap-1">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <Star
+                                  key={star}
+                                  size={13}
+                                  className={star <= round.rating ? "text-amber-500 fill-amber-500" : "text-slate-300"}
+                                />
+                              ))}
+                              <span className="ml-1 text-xs font-bold text-slate-800">{round.rating}/5</span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400">Awaiting rating</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-600">
+                        <div>
+                          <span className="font-medium text-slate-400">Interviewer: </span>
+                          <span className="font-semibold text-slate-800">{interviewerName}</span>
+                        </div>
+                        <div>
+                          <span className="font-medium text-slate-400">Schedule: </span>
+                          <span className="font-semibold text-slate-800">{formatDate(round.scheduledAt)}</span>
+                        </div>
+                      </div>
+
+                      {round.meetingLink && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <Video size={14} className="text-blue-600" />
+                          <span className="font-medium text-slate-400">Meet Link: </span>
+                          <a
+                            href={round.meetingLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-blue-600 hover:underline truncate max-w-md"
+                          >
+                            {round.meetingLink}
+                          </a>
+                        </div>
+                      )}
+
+                      {round.feedback && (
+                        <div className="rounded-lg bg-white p-3 border border-slate-200/80">
+                          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                            Interviewer Feedback
+                          </p>
+                          <p className="mt-1 text-xs text-slate-700 leading-relaxed italic">
+                            "{round.feedback}"
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Hiring Manager Recommendation Section */}
+          {recommendation && recommendation.status && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                Hiring Manager Recommendation
+              </h3>
+
+              <div className="mt-3 rounded-xl border border-slate-200/90 bg-slate-50/70 p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {recommendation.status === "select" ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">
+                        <ThumbsUp size={13} />
+                        Recommended to Select
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-100 px-3 py-1 text-xs font-bold text-rose-800">
+                        <ThumbsDown size={13} />
+                        Recommended to Reject
+                      </span>
+                    )}
+                  </div>
+                  {recommendation.recommendedAt && (
+                    <span className="text-xs text-slate-400">
+                      {formatDate(recommendation.recommendedAt)}
+                    </span>
+                  )}
+                </div>
+
+                {recommendation.comments && (
+                  <p className="text-xs text-slate-700 italic mt-2">
+                    "{recommendation.comments}"
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Timeline History */}
           {timeline.length > 0 && (
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -395,14 +503,35 @@ export default function CandidateDetailsModal({
         </div>
 
         {/* Modal Footer */}
-        <div className="flex justify-end border-t border-slate-100 px-6 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
-          >
-            Close
-          </button>
+        <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4 shrink-0 bg-slate-50/50 rounded-b-2xl">
+          <div>
+            {normalizedStatus === "selected" && (
+              <span className="text-xs font-semibold text-emerald-700">
+                Candidate is selected and ready for Offer generation.
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+            >
+              Close
+            </button>
+
+            {normalizedStatus === "selected" && (
+              <button
+                type="button"
+                onClick={handleGenerateOfferClick}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-blue-700 transition"
+              >
+                <Send size={15} />
+                Generate Offer
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -1,7 +1,9 @@
 const mongoose = require("mongoose");
 const Offer = require("../models/Offer");
 const Candidate = require("../models/Candidate");
+const Application = require("../models/Application");
 const PDFDocument = require("pdfkit");
+const User = require("../models/User");
 
 
 // GET: Fetch all offers with optional status filter
@@ -84,10 +86,17 @@ const createOffer = async (req, res) => {
       });
     }
 
-    const candidate = await Candidate.findOne({
+    let candidate = await Candidate.findOne({
       _id: candidateId,
-      isArchived: false,
+      isArchived: { $ne: true },
     });
+
+    if (!candidate) {
+      candidate = await Candidate.findById(candidateId);
+    }
+    if (!candidate) {
+      candidate = await User.findById(candidateId);
+    }
 
     if (!candidate) {
       return res.status(404).json({
@@ -96,6 +105,8 @@ const createOffer = async (req, res) => {
       });
     }
 
+    const initialStatus = req.body.status === "Sent" || req.body.sendImmediately ? "Sent" : "Draft";
+    const initialApproval = initialStatus === "Sent" ? "Approved" : "Pending";
     const offer = await Offer.create({
       candidateId: candidate._id,
       createdBy: req.user.id,
@@ -103,8 +114,45 @@ const createOffer = async (req, res) => {
       designation: designation.trim(),
       joiningDate: new Date(joiningDate),
       template: template?.trim() || "default",
-      status: "Draft",
+      status: initialStatus,
+      approvalStatus: initialApproval,
+      sentAt: initialStatus === "Sent" ? new Date() : null,
     });
+
+    if (initialStatus === "Sent") {
+      candidate.status = "offer";
+      if (typeof candidate.save === "function") {
+        await candidate.save().catch(() => {});
+      }
+      await Candidate.updateOne({ _id: candidate._id }, { $set: { status: "offer" } }).catch(() => {});
+      await User.updateOne(
+        { $or: [{ _id: candidate._id }, { email: candidate.email ? candidate.email.toLowerCase() : null }] },
+        { $set: { status: "offer" } }
+      ).catch(() => {});
+
+      const candidateUserId = candidate.user || candidate.userId || candidate._id;
+      const application = await Application.findOne({
+        $or: [
+          { candidateId: candidateUserId },
+          { email: candidate.email ? candidate.email.toLowerCase() : null },
+        ],
+      }).sort({ appliedAt: -1 });
+
+      if (application) {
+        application.status = "Offer";
+        for (const event of application.timeline) {
+          const stage = String(event.stage || "").trim().toLowerCase();
+          if (stage === "applied" || stage === "interview" || stage === "selected") {
+            event.completed = true;
+          } else if (stage === "offer") {
+            event.completed = true;
+            event.date = new Date();
+            event.description = `Official employment offer letter issued for ${offer.designation || candidate.position}.`;
+          }
+        }
+        await application.save();
+      }
+    }
 
     const populatedOffer = await Offer.findById(offer._id)
       .populate("candidateId", "name email phone position status")
@@ -621,8 +669,37 @@ const sendOffer = async (req, res) => {
 
     offer.status = "Sent";
     offer.sentAt = new Date();
-
     await offer.save();
+
+    // Sync candidate status and application timeline
+    const candidate = await Candidate.findById(offer.candidateId);
+    if (candidate) {
+      candidate.status = "offer";
+      await candidate.save();
+
+      const candidateUserId = candidate.user || candidate.userId || candidate._id;
+      const application = await Application.findOne({
+        $or: [
+          { candidateId: candidateUserId },
+          { email: candidate.email ? candidate.email.toLowerCase() : null },
+        ],
+      }).sort({ appliedAt: -1 });
+
+      if (application) {
+        application.status = "Offer";
+        for (const event of application.timeline) {
+          const stage = String(event.stage || "").trim().toLowerCase();
+          if (stage === "applied" || stage === "interview" || stage === "selected") {
+            event.completed = true;
+          } else if (stage === "offer") {
+            event.completed = true;
+            event.date = new Date();
+            event.description = `Official employment offer letter issued for ${offer.designation || candidate.position}.`;
+          }
+        }
+        await application.save();
+      }
+    }
 
     const updatedOffer = await Offer.findById(offer._id)
       .populate("candidateId", "name email phone position status")

@@ -75,7 +75,7 @@ const applicationSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["Applied", "Screening", "Interview", "Selected", "Rejected"],
+      enum: ["Applied", "Interview", "Selected", "Offer", "Rejected"],
       default: "Applied",
     },
     timeline: {
@@ -83,10 +83,31 @@ const applicationSchema = new mongoose.Schema(
       default: () => [
         {
           stage: "Applied",
-          title: "Application Submitted",
+          title: "Applied",
           description: "Your application has been received and logged.",
           completed: true,
           date: new Date(),
+        },
+        {
+          stage: "Interview",
+          title: "Interview",
+          description: "Your application is moving forward to the interview stage.",
+          completed: false,
+          date: null,
+        },
+        {
+          stage: "Selected",
+          title: "Selected",
+          description: "You have been selected and are progressing to the final stage.",
+          completed: false,
+          date: null,
+        },
+        {
+          stage: "Offer",
+          title: "Offer",
+          description: "The final offer is being prepared for you.",
+          completed: false,
+          date: null,
         },
       ],
     },

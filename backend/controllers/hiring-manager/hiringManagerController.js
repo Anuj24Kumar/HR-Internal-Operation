@@ -1,17 +1,33 @@
 const Candidate = require('../../models/Candidate');
-const ApprovalRequest = require('../../models/ApprovalRequest');
+const User = require('../../models/User');
+const Application = require('../../models/Application');
 const HiringRecommendation = require('../../models/hiring-manager/HiringRecommendation');
-const Offer = require('../../models/Offer');
-const Letter = require('../../models/Letter');
 
 const userIdOf = (req) => req.user?._id || req.user?.id;
-const idString = (value) => value == null ? '' : String(value);
 
 function assignedToManagerQuery(req) {
   const uid = userIdOf(req);
   return {
     isArchived: { $ne: true },
-    hiringManagerId: uid
+    $or: [
+      { hiringManagerId: uid },
+      { hiringManagerId: null },
+      { hiringManagerId: { $exists: false } },
+    ],
+    // Only candidates whose interview has been completed (interviewer provided rating/score/feedback)
+    // or who are already selected
+    $and: [
+      {
+        $or: [
+          { 'interviews.status': 'completed' },
+          { 'interviews.rating': { $ne: null } },
+          { 'interviews.score': { $ne: null } },
+          { 'interviews.feedback': { $ne: '' } },
+          { status: { $in: ['selected', 'Selected', 'offer', 'Offer'] } },
+          { 'hiringRecommendation.status': 'select' },
+        ]
+      }
+    ]
   };
 }
 
@@ -35,17 +51,10 @@ function stripSensitive(candidate) {
   return obj;
 }
 
-function isCurrentApproverForManager(step, uid) {
-  if (!step || step.status !== 'pending') return false;
-  if (idString(step.approverId) === idString(uid)) return true;
-  if (!step.approverId && (step.approverRole === 'hiring_manager' || step.approverRole === 'hm')) return true;
-  return false;
-}
-
 exports.getDashboard = async (req, res, next) => {
   try {
     const query = assignedToManagerQuery(req);
-    const [openRoles, candidateCount, interviewsThisWeek, pendingApprovals] = await Promise.all([
+    const [openRoles, candidateCount, interviewsThisWeek] = await Promise.all([
       Candidate.distinct('position', { ...query, status: { $nin: ['selected', 'rejected'] } }),
       Candidate.countDocuments(query),
       Candidate.countDocuments({
@@ -59,16 +68,11 @@ exports.getDashboard = async (req, res, next) => {
           }
         }
       }),
-      ApprovalRequest.find({ status: 'pending' }).select('steps currentStep').lean()
     ]);
-    const approvalsToApprove = pendingApprovals.filter(approval => {
-      const step = currentApprovalStep(approval);
-      return isCurrentApproverForManager(step, userIdOf(req));
-    }).length;
     return res.json({
       success: true,
       data: { openRoles: openRoles.length, pipelineCandidates: candidateCount,
-        interviewsThisWeek, offersToApprove: approvalsToApprove }
+        interviewsThisWeek }
     });
   } catch (err) { next(err); }
 };
@@ -162,7 +166,7 @@ exports.recommendCandidate = async (req, res, next) => {
     });
     if (!candidate) {
       return res.status(404).json({ success: false, error: {
-        code: 'NOT_FOUND', message: 'Candidate not found or not assigned to you'
+        code: 'NOT_FOUND', message: 'Candidate not found or not accessible'
       }});
     }
     const recommendation = await HiringRecommendation.create({
@@ -178,119 +182,65 @@ exports.recommendCandidate = async (req, res, next) => {
       recommendedAt: new Date(),
       recommendedBy: userIdOf(req),
     };
+
+    let isIntern = false;
+    let newRole = 'employee';
     if (decision === 'select') {
       candidate.status = 'selected';
+      isIntern = String(candidate.jobType || candidate.position || '').toLowerCase().includes('intern');
+      newRole = isIntern ? 'intern' : 'employee';
+      candidate.selectedAs = newRole;
+      candidate.role = newRole;
     } else if (decision === 'reject') {
       candidate.status = 'rejected';
     }
     await candidate.save();
 
+    // Sync Application model
+    const candidateUserId = candidate.user || candidate.userId || candidate._id;
+    const application = await Application.findOne({
+      $or: [
+        { candidateId: candidateUserId },
+        { email: candidate.email ? candidate.email.toLowerCase() : null }
+      ]
+    }).sort({ appliedAt: -1 });
+
+    if (application) {
+      if (decision === 'select') {
+        application.status = 'Selected';
+        for (const event of application.timeline) {
+          const stage = String(event.stage || '').trim().toLowerCase();
+          if (stage === 'applied' || stage === 'interview') {
+            event.completed = true;
+          } else if (stage === 'selected') {
+            event.completed = true;
+            event.date = new Date();
+            event.description = comments || `Candidate selected for ${isIntern ? 'Internship' : 'Full-time'}.`;
+          }
+        }
+      } else {
+        application.status = 'Rejected';
+      }
+      await application.save();
+    }
+
+    // AUTOMATIC ROLE CONVERSION:
+    // If selected, automatically convert user role in User collection
+    if (decision === 'select') {
+      const userDoc = await User.findById(candidateUserId) || await User.findOne({ email: candidate.email.toLowerCase() });
+      if (userDoc) {
+        userDoc.role = newRole;
+        userDoc.status = 'active';
+        userDoc.isActive = true;
+        userDoc.selectedAs = newRole;
+        await userDoc.save();
+      }
+    }
+
     return res.status(201).json({ success: true, data: recommendation,
-      message: 'Hiring recommendation submitted' });
+      message: `Hiring recommendation submitted: Candidate ${decision === 'select' ? 'selected and converted to ' + newRole : 'rejected'}` });
   } catch (err) { next(err); }
 };
-
-exports.listApprovals = async (req, res, next) => {
-  try {
-    const uid = userIdOf(req);
-    const approvals = await ApprovalRequest.find({ status: 'pending' })
-      .sort({ createdAt: -1 }).lean();
-    const filtered = approvals.filter(a => {
-      const step = currentApprovalStep(a);
-      return isCurrentApproverForManager(step, uid);
-    });
-    return res.json({ success: true, data: filtered });
-  } catch (err) { next(err); }
-};
-
-exports.getApproval = async (req, res, next) => {
-  try {
-    const approval = await ApprovalRequest.findById(req.params.id).lean();
-    if (!approval) return res.status(404).json({ success: false,
-      error: { code: 'NOT_FOUND', message: 'Approval request not found' } });
-    const uid = idString(userIdOf(req));
-    const step = currentApprovalStep(approval);
-    const assigned = isCurrentApproverForManager(step, uid);
-    if (!assigned) return res.status(403).json({ success: false, error: {
-      code: 'FORBIDDEN', message: 'This approval is not assigned to you'
-    }});
-
-    const relatedIds = [approval.resourceId, approval.entityId].filter(Boolean);
-    let resource = null;
-    const requestType = String(approval.entityType || approval.requestType || '').toLowerCase();
-
-    if (requestType === 'offer') {
-      const offerQuery = [{ approvalId: approval._id }];
-      if (relatedIds.length) {
-        offerQuery.push({ _id: { $in: relatedIds } });
-      }
-      const offer = await Offer.findOne({ $or: offerQuery })
-        .select('offerType designation salary joiningDate expiryDate expiresAt status approvalStatus createdAt')
-        .lean();
-      if (offer) {
-        resource = { type: 'offer', ...offer };
-      }
-    } else if (requestType === 'letter') {
-      const letterQuery = [{ approvalId: approval._id }];
-      if (relatedIds.length) {
-        letterQuery.push({ _id: { $in: relatedIds } });
-      }
-      const letter = await Letter.findOne({ $or: letterQuery })
-        .select('type letterType status submittedAt createdAt')
-        .lean();
-      if (letter) {
-        resource = { type: 'letter', ...letter };
-      }
-    }
-
-    return res.json({ success: true, data: { ...approval, resource } });
-  } catch (err) { next(err); }
-};
-
-async function decideApproval(req, res, next, decision) {
-  try {
-    const approval = await ApprovalRequest.findById(req.params.id);
-    if (!approval) return res.status(404).json({ success: false, error: {
-      code: 'NOT_FOUND', message: 'Approval request not found'
-    }});
-    const uid = idString(userIdOf(req));
-    const step = currentApprovalStep(approval);
-    if (!isCurrentApproverForManager(step, uid) || approval.status !== 'pending') {
-      return res.status(403).json({ success: false, error: {
-        code: 'FORBIDDEN', message: 'You are not the current approver for this request'
-      }});
-    }
-    if (decision === 'reject' && !String(req.body.comment || '').trim()) {
-      return res.status(400).json({ success: false, error: {
-        code: 'VALIDATION_ERROR', message: 'A rejection comment is required'
-      }});
-    }
-    step.status = decision === 'approve' ? 'approved' : 'rejected';
-    step.comment = String(req.body.comment || '').trim();
-    step.approverId = step.approverId || uid;
-    step.actedAt = new Date();
-    if (decision === 'reject') {
-      approval.status = 'rejected';
-    } else {
-      const nextStep = approval.steps
-        .filter(candidateStep => candidateStep.order > step.order)
-        .sort((a, b) => a.order - b.order)[0];
-      if (nextStep) approval.currentStep = nextStep.order;
-      else approval.status = 'approved';
-    }
-    await approval.save();
-    return res.json({ success: true, data: approval,
-      message: decision === 'approve' ? 'Approval recorded' : 'Approval rejected' });
-  } catch (err) { next(err); }
-}
-exports.approveRequest = (req, res, next) => decideApproval(req, res, next, 'approve');
-exports.rejectRequest = (req, res, next) => decideApproval(req, res, next, 'reject');
-
-function currentApprovalStep(approval) {
-  return approval.steps?.find(step => step.order === approval.currentStep) ||
-    approval.steps?.[approval.currentStep] ||
-    null;
-}
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

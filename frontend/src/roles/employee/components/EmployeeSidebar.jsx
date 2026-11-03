@@ -5,11 +5,13 @@ import {
   Files,
   FileText,
   DoorOpen,
+  Award,
 } from "lucide-react";
 import UnifiedSidebar from "../../../components/UnifiedSidebar.jsx";
 
 const employeeTabs = [
   { label: "Overview", path: "/employee", icon: LayoutDashboard, end: true },
+  { label: "My Offer", path: "/employee/offer", icon: Award },
   { label: "Employment History", path: "/employee/history", icon: Clock },
   { label: "My Salary", path: "/employee/salary", icon: CreditCard },
   { label: "My Documents", path: "/employee/documents", icon: Files },

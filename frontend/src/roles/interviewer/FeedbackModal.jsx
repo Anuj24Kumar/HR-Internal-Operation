@@ -17,8 +17,12 @@ export default function FeedbackModal({
   setHoverRating,
   rating,
   setRating,
+  score,
+  setScore,
   feedback,
   setFeedback,
+  isCompletingEvaluation,
+  evaluationError,
   submittingFeedback,
 }) {
   if (!selectedRound) {
@@ -27,10 +31,17 @@ export default function FeedbackModal({
 
   return (
     <div className="modal-overlay" onClick={() => setSelectedRound(null)}>
-      <div className="modal-dialog" onClick={(event) => event.stopPropagation()}>
+      <div
+        className="modal-dialog interviewer-evaluation-dialog"
+        onClick={(event) => event.stopPropagation()}
+      >
         <header className="modal-header">
           <h3 className="modal-title">
-            {isUpdate ? "Update Interview Evaluation" : "Submit Interview Assessment"}
+            {isCompletingEvaluation
+              ? "Complete Interview & Submit Evaluation"
+              : isUpdate
+                ? "Update Interview Evaluation"
+                : "Submit Interview Assessment"}
           </h3>
           <button
             type="button"
@@ -82,6 +93,25 @@ export default function FeedbackModal({
             </div>
 
             <div className="form-group">
+              <label className="form-label" htmlFor="interview-score">
+                <span>Interview Score (0 to 100)</span>
+                <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Required</span>
+              </label>
+              <input
+                id="interview-score"
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                required
+                className="form-input"
+                value={score}
+                onChange={(event) => setScore(event.target.value)}
+                placeholder="Enter score out of 100"
+              />
+            </div>
+
+            <div className="form-group">
               <label className="form-label">
                 <span>Performance Rating (1 to 5 Stars)</span>
                 <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Required</span>
@@ -95,6 +125,8 @@ export default function FeedbackModal({
                       key={starValue}
                       type="button"
                       className="star-select-btn"
+                      aria-label={`${starValue} star${starValue === 1 ? "" : "s"}`}
+                      aria-pressed={Number(rating) === starValue}
                       onMouseEnter={() => setHoverRating(starValue)}
                       onMouseLeave={() => setHoverRating(0)}
                       onClick={() => setRating(starValue)}
@@ -105,7 +137,7 @@ export default function FeedbackModal({
                 })}
 
                 <span className="rating-descriptor">
-                  {RATING_LABELS[hoverRating || rating]}
+                  {RATING_LABELS[hoverRating || rating] || "Select a star rating"}
                 </span>
               </div>
             </div>
@@ -119,12 +151,16 @@ export default function FeedbackModal({
                 id="feedback-text"
                 rows={4}
                 required
+                maxLength={5000}
                 className="form-textarea"
                 placeholder="Assess technical depth, problem-solving, architectural thinking, strengths, and areas of concern..."
                 value={feedback}
                 onChange={(event) => setFeedback(event.target.value)}
               />
             </div>
+            {evaluationError && (
+              <p className="auth-error" role="alert">{evaluationError}</p>
+            )}
           </div>
 
           <footer className="modal-footer">
@@ -146,7 +182,13 @@ export default function FeedbackModal({
               ) : (
                 <>
                   <Check size={16} />
-                  <span>{isUpdate ? "Save Changes" : "Submit Evaluation"}</span>
+                  <span>
+                    {isCompletingEvaluation
+                      ? "Mark completed & submit"
+                      : isUpdate
+                        ? "Save Changes"
+                        : "Submit Evaluation"}
+                  </span>
                 </>
               )}
             </button>

@@ -1,7 +1,6 @@
 
 const stages = [
   "Applied",
-  "Screening",
   "Interview",
   "Selected",
   "Offer",
@@ -19,14 +18,14 @@ export default function ApplicationTimeline({ status }) {
 
   const stageAliases = {
     applied: 0,
-    screening: 1,
-    shortlisted: 1,
-    interview: 2,
-    interviewed: 2,
-    selected: 3,
-    offer: 4,
-    offer_sent: 4,
-    accepted: 4,
+    screening: 0,
+    shortlisted: 0,
+    interview: 1,
+    interviewed: 1,
+    selected: 2,
+    offer: 3,
+    offer_sent: 3,
+    accepted: 3,
   };
 
   const currentStage = stageAliases[normalizedStatus] ?? -1;

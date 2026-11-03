@@ -3,8 +3,21 @@ const mongoose = require("mongoose");
 const interviewRoundSchema = new mongoose.Schema(
   {
     round: { type: Number, required: true },
+    roundName: { type: String, trim: true, default: "" },
+    interviewType: {
+      type: String,
+      enum: ["technical", "hr", "managerial", "other"],
+      default: "technical",
+    },
+    interviewRecordId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Interview",
+      default: null,
+    },
     scheduledAt: { type: Date, required: true },
+    meetingLink: { type: String, default: "" },
     interviewerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    score: { type: Number, min: 0, max: 100, default: null },
     rating: { type: Number, min: 1, max: 5, default: null },
     feedback: { type: String, default: "" },
     feedbackSubmittedAt: { type: Date, default: null },
@@ -12,7 +25,7 @@ const interviewRoundSchema = new mongoose.Schema(
     lockedAt: { type: Date, default: null },
     status: {
       type: String,
-      enum: ["scheduled", "completed", "cancelled"],
+      enum: ["scheduled", "completed", "cancelled", "rescheduled"],
       default: "scheduled",
     },
   },
@@ -21,7 +34,12 @@ const interviewRoundSchema = new mongoose.Schema(
 
 const candidateSchema = new mongoose.Schema(
   {
-    role: { type: String, default: "candidate", index: true },
+    role: {
+      type: String,
+      enum: ["candidate", "intern", "employee"],
+      default: "candidate",
+      index: true,
+    },
     user: { type: mongoose.Schema.Types.ObjectId, ref: "User", sparse: true },
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     name: { type: String, trim: true, default: "" },
@@ -42,11 +60,13 @@ const candidateSchema = new mongoose.Schema(
         "screening",
         "interview",
         "selected",
+        "offer",
         "rejected",
         "Applied",
         "Screening",
         "Interview",
         "Selected",
+        "Offer",
         "Rejected",
       ],
       default: "Applied",
@@ -69,7 +89,9 @@ const candidateSchema = new mongoose.Schema(
 );
 
 candidateSchema.pre("validate", function () {
-  this.role = "candidate";
+  if (!this.role) {
+    this.role = "candidate";
+  }
   if (!this.name && (this.firstName || this.lastName)) {
     this.name = [this.firstName, this.lastName].filter(Boolean).join(" ");
   }

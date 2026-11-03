@@ -17,9 +17,12 @@ export default function InterviewerEntry() {
   const [actionMessage, setActionMessage] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [selectedRound, setSelectedRound] = useState(null);
-  const [rating, setRating] = useState(4);
+  const [rating, setRating] = useState(0);
+  const [score, setScore] = useState("");
   const [feedback, setFeedback] = useState("");
   const [isUpdate, setIsUpdate] = useState(false);
+  const [isCompletingEvaluation, setIsCompletingEvaluation] = useState(false);
+  const [evaluationError, setEvaluationError] = useState("");
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
   const [hoverRating, setHoverRating] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -53,25 +56,58 @@ export default function InterviewerEntry() {
     await loadInterviews();
   }
 
+  async function handleCompleteInterview(item) {
+    const candidateId = item.candidate?._id;
+    const roundId = item.interview?._id;
+    if (!candidateId || !roundId) {
+      setActionError("Unable to identify this assigned interview.");
+      return false;
+    }
+
+    setSelectedRound(item);
+    setIsCompletingEvaluation(true);
+    setIsUpdate(false);
+    setScore(item.interview.score ?? "");
+    setRating(item.interview.rating ?? 0);
+    setFeedback("");
+    setActionError(null);
+    setEvaluationError("");
+    setActionMessage(null);
+    return true;
+  }
+
   function openFeedbackModal(item) {
     setSelectedRound(item);
+    setIsCompletingEvaluation(false);
+    setEvaluationError("");
     const existingRating = item.interview.rating;
     const existingFeedback = item.interview.feedback;
     const alreadySubmitted = existingRating != null || Boolean(existingFeedback?.trim());
 
     setIsUpdate(alreadySubmitted);
-    setRating(existingRating || 4);
+    setRating(existingRating || 0);
+    setScore(item.interview.score ?? "");
     setFeedback(existingFeedback || "");
   }
 
   async function handleSubmitFeedback(event) {
     event.preventDefault();
+    const numericScore = Number(score);
+    if (score === "" || !Number.isInteger(numericScore) || numericScore < 0 || numericScore > 100) {
+      setEvaluationError("Enter a whole-number interview score from 0 to 100.");
+      return;
+    }
+    if (!Number.isInteger(Number(rating)) || Number(rating) < 1 || Number(rating) > 5) {
+      setEvaluationError("Select an interviewer rating from 1 to 5 stars.");
+      return;
+    }
     if (!feedback.trim()) {
-      alert("Please provide detailed assessment feedback before submitting.");
+      setEvaluationError("Enter the interview result description before submitting.");
       return;
     }
 
     setSubmittingFeedback(true);
+    setEvaluationError("");
     setActionError(null);
 
     const candidateId = selectedRound.candidate._id;
@@ -81,26 +117,43 @@ export default function InterviewerEntry() {
       const method = isUpdate ? "PATCH" : "POST";
       const endpoint = `/candidates/${candidateId}/interviews/${roundId}/feedback`;
 
-      await apiRequest(endpoint, {
-        method,
-        body: JSON.stringify({
-          rating: Number(rating),
-          feedback: feedback.trim(),
-        }),
-      });
+      if (isCompletingEvaluation) {
+        await apiRequest(endpoint, {
+          method,
+          body: JSON.stringify({
+            status: "completed",
+            score: numericScore,
+            rating: Number(rating),
+            feedback: feedback.trim(),
+          }),
+        });
+      } else {
+        await apiRequest(endpoint, {
+          method,
+          body: JSON.stringify({
+            score: numericScore,
+            rating: Number(rating),
+            feedback: feedback.trim(),
+          }),
+        });
+      }
 
       setActionMessage(
-        isUpdate
+        isCompletingEvaluation
+          ? "Interview completed and evaluation submitted for hiring-manager review."
+          : isUpdate
           ? "Interview assessment updated successfully."
           : "Interview rating and feedback submitted successfully!"
       );
       setTimeout(() => setActionMessage(null), 4000);
 
       setSelectedRound(null);
-      loadInterviews();
+      setIsCompletingEvaluation(false);
+      setEvaluationError("");
+      await loadInterviews();
     } catch (err) {
       console.error("Feedback submission error:", err);
-      alert("Failed to submit feedback: " + err.message);
+      setEvaluationError(`Failed to submit interview evaluation: ${err.message}`);
     } finally {
       setSubmittingFeedback(false);
     }
@@ -123,21 +176,15 @@ export default function InterviewerEntry() {
   );
 
   const filteredInterviews = activeTab === "completed"
-    ? completedInterviewRounds
-    : activeTab === "feedback-completed"
-      ? feedbackCompletedRounds
-      : activeTab === "assigned"
-        ? pendingInterviewRounds
-        : interviewList;
+    ? pendingFeedbackRounds
+    : interviewList;
 
   return (
     <div className="shell">
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        assignedInterviewRounds={pendingInterviewRounds.length}
         completedInterviewRounds={completedInterviewRounds.length}
-        feedbackCompletedRounds={feedbackCompletedRounds.length}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
       />
@@ -164,10 +211,12 @@ export default function InterviewerEntry() {
             completedInterviewRounds={completedInterviewRounds.length}
             pendingFeedbackRounds={pendingFeedbackRounds.length}
             feedbackCompletedRounds={feedbackCompletedRounds.length}
+            completedFeedbackInterviews={feedbackCompletedRounds}
             activeTab={activeTab}
             loading={loading}
             filteredInterviews={filteredInterviews}
             openFeedbackModal={openFeedbackModal}
+            onCompleteInterview={handleCompleteInterview}
           />
         )}
 
@@ -182,8 +231,12 @@ export default function InterviewerEntry() {
         setHoverRating={setHoverRating}
         rating={rating}
         setRating={setRating}
+        score={score}
+        setScore={setScore}
         feedback={feedback}
         setFeedback={setFeedback}
+        isCompletingEvaluation={isCompletingEvaluation}
+        evaluationError={evaluationError}
         submittingFeedback={submittingFeedback}
       />
     </div>

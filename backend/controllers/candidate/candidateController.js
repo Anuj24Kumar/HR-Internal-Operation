@@ -6,6 +6,7 @@ const User = require("../../models/User");
 const Document = require("../../models/Document");
 const Offer = require("../../models/Offer");
 const Application = require("../../models/Application");
+const Interview = require("../../models/Interview");
 const AuditLogs = require("../../models/AuditLogs");
 
 const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
@@ -67,13 +68,27 @@ const getCandidates = async (req, res) => {
   try {
     const { status, position, source, page = 1, limit = 10 } = req.query;
     const filter = { ...notArchived };
-    if (status) filter.status = status;
+    if (String(req.query.includeSelected).toLowerCase() === "true") {
+      filter.$or = [
+        { role: { $in: ["candidate", "Candidate", "intern", "employee"] } },
+        { "hiringRecommendation.status": "select" },
+        { status: { $in: ["selected", "Selected", "offer", "Offer"] } },
+        { selectedAs: { $in: ["intern", "employee"] } },
+      ];
+    } else {
+      filter.role = { $in: ["candidate", "Candidate"] };
+    }
+    if (status && status !== 'all') filter.status = new RegExp('^' + status + '$', 'i');
+    if (req.query.jobType && req.query.jobType !== 'all') filter.jobType = req.query.jobType;
     if (position) filter.position = position;
-    if (source) filter.$or = [{ source }, { applicationSource: source }];
+    if (source) {
+      filter.$and = [{ $or: [{ source }, { applicationSource: source }] }];
+    }
     const pageNumber = Math.max(1, Number(page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(limit) || 10));
     const [candidates, total] = await Promise.all([
       Candidate.find(filter)
+        .populate("interviews.interviewerId", "name firstName lastName email")
         .sort({ createdAt: -1 })
         .skip((pageNumber - 1) * pageSize)
         .limit(pageSize),
@@ -100,7 +115,8 @@ const getCandidateById = async (req, res) => {
     if (!isValidId(req.params.id)) {
       return res.status(400).json({ success: false, message: "Invalid candidate ID" });
     }
-    const candidate = await Candidate.findOne({ _id: req.params.id, ...notArchived });
+    const candidate = await Candidate.findOne({ _id: req.params.id, role: { $in: ["candidate", "Candidate"] }, ...notArchived })
+      .populate("interviews.interviewerId", "name firstName lastName email");
     if (!candidate) {
       return res.status(404).json({ success: false, message: "Candidate not found" });
     }
@@ -141,7 +157,7 @@ const updateCandidate = async (req, res) => {
     const candidate = await Candidate.findOneAndUpdate(
       { _id: id, ...notArchived },
       { $set: updates },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
     if (!candidate) {
       return res.status(404).json({ success: false, message: "Candidate not found" });
@@ -161,17 +177,18 @@ const updateCandidateStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
-    const statuses = ["applied", "screening", "interview", "selected", "rejected"];
+    const statuses = ["applied", "interview", "selected", "offer", "rejected", "screening"];
     if (!isValidId(id)) {
       return res.status(400).json({ success: false, message: "Invalid candidate ID" });
     }
-    if (!statuses.includes(status)) {
+    const normalizedStatus = String(status || "").toLowerCase();
+    if (!statuses.includes(normalizedStatus)) {
       return res.status(400).json({ success: false, message: "Invalid status", allowedStatuses: statuses });
     }
     const candidate = await Candidate.findOneAndUpdate(
       { _id: id, ...notArchived },
-      { $set: { status } },
-      { new: true, runValidators: true }
+      { $set: { status: normalizedStatus } },
+      { returnDocument: 'after', runValidators: true }
     );
     if (!candidate) {
       return res.status(404).json({ success: false, message: "Candidate not found" });
@@ -194,18 +211,58 @@ const selectCandidate = async (req, res) => {
     if (!isValidId(id)) {
       return res.status(400).json({ success: false, message: "Invalid candidate ID" });
     }
-    if (!["intern", "employee"].includes(selectedAs)) {
-      return res.status(400).json({ success: false, message: "selectedAs must be intern or employee" });
-    }
-    const candidate = await Candidate.findOneAndUpdate(
-      { _id: id, ...notArchived },
-      { $set: { status: "selected", selectedAs } },
-      { new: true, runValidators: true }
-    );
+    const candidate = await Candidate.findOne({ _id: id, ...notArchived });
     if (!candidate) {
       return res.status(404).json({ success: false, message: "Candidate not found" });
     }
-    return res.status(200).json({ success: true, message: "Candidate selected successfully", data: candidate });
+
+    const isIntern = selectedAs === "intern" || String(candidate.jobType || candidate.position || "").toLowerCase().includes("intern");
+    const roleType = isIntern ? "intern" : "employee";
+
+    candidate.status = "selected";
+    candidate.selectedAs = roleType;
+    candidate.role = roleType;
+    await candidate.save();
+
+    // Sync Application
+    const candidateUserId = candidate.user || candidate.userId || candidate._id;
+    const application = await Application.findOne({
+      $or: [
+        { candidateId: candidateUserId },
+        { email: candidate.email ? candidate.email.toLowerCase() : null }
+      ]
+    }).sort({ appliedAt: -1 });
+
+    if (application) {
+      application.status = "Selected";
+      for (const event of application.timeline) {
+        const stage = String(event.stage || "").trim().toLowerCase();
+        if (stage === "applied" || stage === "interview") {
+          event.completed = true;
+        } else if (stage === "selected") {
+          event.completed = true;
+          event.date = new Date();
+          event.description = `Candidate selected for ${isIntern ? 'Internship' : 'Full-time'}.`;
+        }
+      }
+      await application.save();
+    }
+
+    // Convert role in User collection
+    const userDoc = await User.findById(candidateUserId) || await User.findOne({ email: candidate.email.toLowerCase() });
+    if (userDoc) {
+      userDoc.role = roleType;
+      userDoc.status = "active";
+      userDoc.isActive = true;
+      userDoc.selectedAs = roleType;
+      await userDoc.save();
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Candidate selected successfully and converted to ${roleType}`,
+      data: candidate,
+    });
   } catch (error) {
     console.error("Select candidate error:", error.message);
     return res.status(500).json({ success: false, message: "Internal server error" });
@@ -220,7 +277,7 @@ const archiveCandidate = async (req, res) => {
     const candidate = await Candidate.findOneAndUpdate(
       { _id: req.params.id, ...notArchived },
       { $set: { isArchived: true, archived: true } },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!candidate) {
       return res.status(404).json({ success: false, message: "Candidate not found or already archived" });
@@ -268,6 +325,10 @@ const getMyApplication = async (req, res) => {
     if (!candidate) {
       return res.status(404).json({ success: false, message: "Candidate application not found" });
     }
+    const interviews = await Interview.find({ candidateId: candidate._id })
+      .populate("interviewerId", "name firstName lastName email")
+      .sort({ scheduledAt: 1, createdAt: -1 })
+      .lean();
     return res.status(200).json({
       success: true,
       message: "Application fetched successfully",
@@ -276,6 +337,7 @@ const getMyApplication = async (req, res) => {
         applicationSource: candidate.applicationSource || candidate.source,
         appliedDate: candidate.appliedDate,
         status: candidate.status,
+        interviews,
       },
     });
   } catch (error) {
@@ -463,19 +525,36 @@ const deleteCandidateDocument = async (req, res) => {
 
 const getMyOffer = async (req, res) => {
   try {
+    const candidateIds = await Candidate.find({
+      $or: [
+        { user: req.user.id },
+        { userId: req.user.id },
+        { _id: req.user.id },
+        { email: req.user.email ? req.user.email.toLowerCase() : null },
+      ],
+    }).distinct("_id");
+
     const offer = await Offer.findOne({
-      $or: [{ candidate: req.user.id }, { candidateId: { $in: await Candidate.find({
-        $or: [{ user: req.user.id }, { userId: req.user.id }],
-      }).distinct("_id") } }],
-      status: { $in: ["sent", "Sent"] },
-    }).select("-createdBy -approvalId");
+      $or: [
+        { candidate: req.user.id },
+        { candidateId: req.user.id },
+        { candidateId: { $in: candidateIds } },
+      ],
+      status: { $in: ["sent", "Sent", "approved", "Approved", "Draft", "draft"] },
+    }).sort({ createdAt: -1 });
+
     if (!offer) {
       return res.status(404).json({ success: false, message: "No offer found for your account." });
     }
+
+    const offerObj = offer.toObject ? offer.toObject() : { ...offer };
+    offerObj.pdfUrl = `/api/offers/${offer._id}/pdf`;
+
     return res.status(200).json({
       success: true,
       message: "Candidate offer fetched successfully",
-      offer,
+      offer: offerObj,
+      data: { offer: offerObj },
     });
   } catch (error) {
     console.error("Get candidate offer error:", error.message);
@@ -544,13 +623,6 @@ const applyJob = async (req, res) => {
           date: new Date(),
         },
         {
-          stage: "Screening",
-          title: "Profile Screening",
-          description: "Your application and qualifications are being reviewed by the hiring team.",
-          completed: false,
-          date: null,
-        },
-        {
           stage: "Interview",
           title: "Interview Scheduled",
           description: "Technical assessment and HR evaluation rounds.",
@@ -559,8 +631,15 @@ const applyJob = async (req, res) => {
         },
         {
           stage: "Selected",
-          title: "Final Decision & Offer",
-          description: "Candidate selection and employment/internship letter issuance.",
+          title: "Candidate Selected",
+          description: "Candidate selection and evaluation decision.",
+          completed: false,
+          date: null,
+        },
+        {
+          stage: "Offer",
+          title: "Job Offer",
+          description: "Official employment offer letter issuance and onboarding.",
           completed: false,
           date: null,
         },
@@ -571,6 +650,28 @@ const applyJob = async (req, res) => {
     if (resumeUrl) user.resumeUrl = resumeUrl;
     user.status = "applied";
     await user.save();
+
+    // Ensure Candidate document exists so HR can see the applicant
+    await Candidate.findOneAndUpdate(
+      { email: email.toLowerCase() },
+      {
+        $set: {
+          name: candidateName,
+          email: email.toLowerCase(),
+          phone,
+          position: position.trim(),
+          jobType: validJobType,
+          resumeUrl: resumeUrl || "",
+          user: user._id,
+          userId: user._id,
+          status: "applied",
+          applicationSource: "Direct Application",
+          source: "Direct",
+          appliedDate: new Date(),
+        },
+      },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+    );
 
     return res.status(201).json({
       success: true,
@@ -643,10 +744,23 @@ const getMyApplications = async (req, res) => {
       }
     }
 
+    // Enrich applications with candidate interviews
+    const candidateDoc = await Candidate.findOne({
+      $or: [{ user: req.user.id }, { userId: req.user.id }, { email: req.user.email?.toLowerCase() }]
+    }).populate("interviews.interviewerId", "name firstName lastName email").lean();
+
+    const enrichedApplications = applications.map(app => {
+      const appObj = app.toObject ? app.toObject() : { ...app };
+      if (candidateDoc && candidateDoc.interviews) {
+        appObj.interviews = candidateDoc.interviews;
+      }
+      return appObj;
+    });
+
     return res.status(200).json({
       success: true,
-      applications,
-      data: applications,
+      applications: enrichedApplications,
+      data: enrichedApplications,
     });
   } catch (error) {
     console.error("Get my applications error:", error.message);
@@ -676,10 +790,19 @@ const getApplicationById = async (req, res) => {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
 
+    const candidateDoc = await Candidate.findOne({
+      $or: [{ user: application.candidateId }, { userId: application.candidateId }, { email: application.email?.toLowerCase() }]
+    }).populate("interviews.interviewerId", "name firstName lastName email").lean();
+
+    const appObj = application.toObject ? application.toObject() : { ...application };
+    if (candidateDoc && candidateDoc.interviews) {
+      appObj.interviews = candidateDoc.interviews;
+    }
+
     return res.status(200).json({
       success: true,
-      application,
-      data: application,
+      application: appObj,
+      data: appObj,
     });
   } catch (error) {
     console.error("Get application by ID error:", error.message);

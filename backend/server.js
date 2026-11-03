@@ -46,7 +46,9 @@ app.use("/api/v1/interns", internRoutes);
 app.use("/api/employee", employeeRoutes);
 app.use("/api/v1/employee", employeeRoutes);
 app.use("/api/v1/employees", employeeRoutes);
+app.use("/api/offers", offerRoutes);
 app.use("/api/v1/offers", offerRoutes);
+app.use("/api/interviews", interviewRoutes);
 app.use("/api/v1/interviews", interviewRoutes);
 app.get("/api/v1/route-test", (req, res) => {
   res.json({ success: true, message: "Main server route works" });

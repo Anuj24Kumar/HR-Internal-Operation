@@ -49,7 +49,7 @@ export default function Login() {
       }
 
       // Check role mismatch if a specific role was selected
-      if (role && role !== user.role) {
+      if (role && role !== user.role && !(role === "candidate" && ["intern", "employee"].includes(user.role))) {
         throw new Error(
           `This account belongs to the "${user.role}" role. Please switch role or select Auto-detect.`
         );

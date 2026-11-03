@@ -3,12 +3,9 @@ import {
   Users, 
   CalendarDays, 
   BriefcaseBusiness, 
-  CheckSquare, 
   ChevronRight, 
   Star, 
   CheckCircle2, 
-  XCircle, 
-  Clock, 
   ThumbsUp, 
   ThumbsDown, 
   FileText, 
@@ -17,7 +14,6 @@ import {
   Search,
   RefreshCw,
   ExternalLink,
-  MessageSquare
 } from "lucide-react";
 import useRoleAuth from "../useRoleAuth.js";
 import { apiRequest } from "../../api.js";
@@ -29,7 +25,7 @@ export default function HiringManagerEntry() {
   const { user, logout, isAuthenticated } = useRoleAuth("hiring_manager");
 
   // Navigation tabs
-  const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'candidates' | 'approvals' | 'roles'
+  const [activeTab, setActiveTab] = useState("overview");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
@@ -38,13 +34,10 @@ export default function HiringManagerEntry() {
     openRoles: 0,
     pipelineCandidates: 0,
     interviewsThisWeek: 0,
-    offersToApprove: 0,
   });
 
   // Data states
-  const [rolesList, setRolesList] = useState([]);
   const [candidates, setCandidates] = useState([]);
-  const [approvals, setApprovals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actionMessage, setActionMessage] = useState(null);
@@ -57,13 +50,6 @@ export default function HiringManagerEntry() {
   const [recommendDecision, setRecommendDecision] = useState("select");
   const [recommendComments, setRecommendComments] = useState("");
   const [submittingRecommend, setSubmittingRecommend] = useState(false);
-
-  // Selected approval for Decision Modal
-  const [selectedApproval, setSelectedApproval] = useState(null);
-  const [approvalComment, setApprovalComment] = useState("");
-  const [submittingApproval, setSubmittingApproval] = useState(false);
-  const [loadingApproval, setLoadingApproval] = useState(false);
-  const [approvalDetailError, setApprovalDetailError] = useState("");
 
   // Notifications dropdown
   const [showNotifications, setShowNotifications] = useState(false);
@@ -90,23 +76,12 @@ export default function HiringManagerEntry() {
         setMetrics(dashRes.data);
       }
 
-      // 2. Fetch roles
-      const rolesRes = await apiRequest("/dashboard/hiring-manager/roles");
-      if (rolesRes.data) {
-        setRolesList(rolesRes.data);
-      }
-
-      // 3. Fetch candidates
+      // 2. Fetch candidates
       const candRes = await apiRequest("/hiring-manager/candidates?limit=50");
       if (candRes.data) {
         setCandidates(candRes.data);
       }
 
-      // 4. Fetch pending approvals
-      const appRes = await apiRequest("/hiring-manager/approvals");
-      if (appRes.data) {
-        setApprovals(appRes.data);
-      }
     } catch (err) {
       console.error("Failed to load HM data:", err);
       setActionError(err.message);
@@ -172,58 +147,16 @@ export default function HiringManagerEntry() {
     }
   }
 
-  async function openApprovalDetails(approval) {
-    setSelectedApproval(approval);
-    setApprovalComment("");
-    setApprovalDetailError("");
-    setLoadingApproval(true);
-    try {
-      const response = await apiRequest(`/hiring-manager/approvals/${approval._id}`);
-      setSelectedApproval(response.data);
-    } catch (err) {
-      console.error("Failed to load approval details:", err);
-      setApprovalDetailError("Failed to load approval details: " + err.message);
-    } finally {
-      setLoadingApproval(false);
-    }
-  }
-
-  // Handle Approval Decision (Approve / Reject)
-  async function handleApprovalAction(decision) {
-    if (decision === "reject" && !approvalComment.trim()) {
-      alert("A comment explaining the rejection reason is required.");
-      return;
-    }
-    setSubmittingApproval(true);
-    setActionError(null);
-    try {
-      const endpoint = decision === "approve"
-        ? `/hiring-manager/approvals/${selectedApproval._id}/approve`
-        : `/hiring-manager/approvals/${selectedApproval._id}/reject`;
-
-      await apiRequest(endpoint, {
-        method: "PATCH",
-        body: JSON.stringify({
-          comment: approvalComment.trim(),
-        }),
-      });
-
-      setActionMessage(`Request #${selectedApproval._id.slice(-6)} has been ${decision === "approve" ? "Approved" : "Rejected"}.`);
-      setTimeout(() => setActionMessage(null), 4000);
-
-      setSelectedApproval(null);
-      setApprovalComment("");
-      loadAllData();
-    } catch (err) {
-      console.error("Approval action failed:", err);
-      alert("Action failed: " + err.message);
-    } finally {
-      setSubmittingApproval(false);
-    }
-  }
-
-  // Filter candidates by status and search
+  // Keep offer-approved candidates in the Offers tab instead of the overview.
   const filteredCandidates = candidates.filter((c) => {
+    const hasCompletedInterview = Array.isArray(c.interviews) && c.interviews.some(
+      (round) => round.status === "completed" || round.rating != null || round.score != null || round.feedback
+    );
+    const isSelectedForOffer =
+      String(c.status || "").toLowerCase() === "selected" ||
+      String(c.hiringRecommendation?.status || "").toLowerCase() === "select";
+    if (isSelectedForOffer || !hasCompletedInterview) return false;
+
     const matchesSearch = 
       (c.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
       (c.position || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -236,14 +169,20 @@ export default function HiringManagerEntry() {
     return matchesSearch && matchesStatus;
   });
 
+  const evaluatedCandidates = candidates
+    .filter((candidate) => candidate.hiringRecommendation?.status)
+    .sort(
+      (a, b) =>
+        new Date(b.hiringRecommendation.recommendedAt || 0) -
+        new Date(a.hiringRecommendation.recommendedAt || 0)
+    );
+
   return (
     <div className="shell">
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        candidateCount={candidates.length}
-        approvalCount={approvals.length}
-        roleCount={rolesList.length}
+        evaluatedCount={evaluatedCandidates.length}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
       />
@@ -253,7 +192,6 @@ export default function HiringManagerEntry() {
           user={user}
           onOpenProfile={showProfile}
           logout={logout}
-          pendingCount={approvals.length}
           onToggleMobile={() => setMobileOpen(!mobileOpen)}
         />
 
@@ -261,14 +199,14 @@ export default function HiringManagerEntry() {
           <Profile user={user} />
         ) : (
         <main className="content-area">
-          {activeTab !== "overview" && actionMessage && (
+          {actionMessage && (
             <div className="auth-success" role="status">
               <CheckCircle2 size={18} className="shrink-0" />
               <span>{actionMessage}</span>
             </div>
           )}
 
-          {activeTab !== "overview" && actionError && (
+          {actionError && (
             <div className="auth-error" role="alert">
               <AlertCircle size={18} className="shrink-0" />
               <span>{actionError}</span>
@@ -317,24 +255,11 @@ export default function HiringManagerEntry() {
                   </p>
                 </div>
 
-                <div className="metric-card">
-                  <div className="metric-top">
-                    <span className="metric-label">Offers to Approve</span>
-                    <span className="metric-icon-wrap amber">
-                      <CheckSquare size={18} />
-                    </span>
-                  </div>
-                  <p className="metric-value">{metrics.offersToApprove}</p>
-                  <p className="metric-trend" style={{ color: metrics.offersToApprove > 0 ? "#d97706" : "inherit" }}>
-                    <span>{metrics.offersToApprove > 0 ? "Action required" : "All cleared"}</span>
-                  </p>
-                </div>
               </section>
             </>
           )}
 
-          {/* TAB CONTENT: CANDIDATES */}
-          {activeTab === "candidates" && (
+          {activeTab === "overview" && (
             <div className="card-box">
               <div className="card-box-header">
                 <div>
@@ -366,7 +291,6 @@ export default function HiringManagerEntry() {
                     <option value="applied">Applied</option>
                     <option value="screening">Screening</option>
                     <option value="interview">Interview</option>
-                    <option value="selected">Selected</option>
                     <option value="rejected">Rejected</option>
                   </select>
                 </div>
@@ -464,70 +388,81 @@ export default function HiringManagerEntry() {
             </div>
           )}
 
-          {/* TAB CONTENT: PENDING APPROVALS */}
-          {activeTab === "approvals" && (
+
+          {/* TAB CONTENT: EVALUATION HISTORY */}
+          {activeTab === "history" && (
             <div className="card-box">
               <div className="card-box-header">
                 <div>
-                  <h2 className="card-box-title">Pending Offer & Letter Approvals</h2>
-                  <p className="card-box-subtitle">Approve or reject hiring requests where you are the designated approver</p>
+                  <h2 className="card-box-title">
+                    Evaluation History <span className="text-slate-500">({evaluatedCandidates.length})</span>
+                  </h2>
+                  <p className="card-box-subtitle">Candidates you have evaluated and your recorded decisions</p>
                 </div>
               </div>
 
-              {approvals.length === 0 ? (
+              {loading ? (
+                <div className="empty-state"><p>Loading evaluation history...</p></div>
+              ) : evaluatedCandidates.length === 0 ? (
                 <div className="empty-state">
-                  <CheckSquare className="empty-icon" />
-                  <p className="empty-title">All approvals completed</p>
-                  <p className="empty-desc">You do not have any pending offer or letter approval requests waiting at this time.</p>
+                  <Users className="empty-icon" />
+                  <p className="empty-title">No candidate evaluations yet</p>
+                  <p className="empty-desc">Your completed candidate evaluations will appear here.</p>
                 </div>
               ) : (
                 <div className="table-wrapper">
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Request Type</th>
-                        <th>Reference ID</th>
-                        <th>Step Order</th>
-                        <th>Status</th>
-                        <th>Submitted At</th>
-                        <th style={{ textAlign: "right" }}>Decision</th>
+                        <th>Candidate</th>
+                        <th>Position & Team</th>
+                        <th>Interview Evaluation</th>
+                        <th>Decision</th>
+                        <th>Evaluation Comments</th>
+                        <th>Evaluated</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {approvals.map((req) => (
-                        <tr key={req._id}>
-                          <td>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                              <FileText size={16} style={{ color: "#4f46e5" }} />
-                              <strong style={{ textTransform: "capitalize" }}>
-                                {req.entityType || req.requestType || "Offer"} Approval
-                              </strong>
-                            </div>
-                          </td>
-                          <td style={{ fontFamily: "monospace", fontSize: "12px" }}>
-                            #{req._id.slice(-6)}
-                          </td>
-                          <td>
-                            Step {req.currentStep} of {req.steps?.length || 1}
-                          </td>
-                          <td>
-                            <span className="status-pill pending">Pending Your Review</span>
-                          </td>
-                          <td style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>
-                            {new Date(req.createdAt || req.submittedAt).toLocaleDateString()}
-                          </td>
-                          <td style={{ textAlign: "right" }}>
-                            <button
-                              type="button"
-                              className="btn-action-primary"
-                              onClick={() => openApprovalDetails(req)}
-                            >
-                              <span>Take Action</span>
-                              <ChevronRight size={14} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {evaluatedCandidates.map((candidate) => {
+                        const latestRound = candidate.interviews?.[candidate.interviews.length - 1];
+                        const decision = candidate.hiringRecommendation.status;
+
+                        return (
+                          <tr key={candidate._id}>
+                            <td>
+                              <strong>{candidate.name}</strong>
+                              <p className="text-xs text-slate-500">{candidate.email || "—"}</p>
+                            </td>
+                            <td>
+                              <span>{candidate.position || "—"}</span>
+                              <p className="text-xs text-slate-500">{candidate.department || "Engineering"}</p>
+                            </td>
+                            <td>
+                              <div className="flex flex-wrap items-center gap-2">
+                                {latestRound?.score != null && (
+                                  <span className="status-pill interview">Score: {latestRound.score}/100</span>
+                                )}
+                                {latestRound?.rating != null ? (
+                                  <span className="text-xs font-semibold">{latestRound.rating}/5 stars</span>
+                                ) : (
+                                  <span className="text-xs text-slate-500">No rating</span>
+                                )}
+                              </div>
+                            </td>
+                            <td>
+                              <span className={`status-pill ${decision === "select" ? "selected" : "rejected"}`}>
+                                {decision === "select" ? "Selected" : "Rejected"}
+                              </span>
+                            </td>
+                            <td className="max-w-sm whitespace-normal">{candidate.hiringRecommendation.comments || "—"}</td>
+                            <td>
+                              {candidate.hiringRecommendation.recommendedAt
+                                ? new Date(candidate.hiringRecommendation.recommendedAt).toLocaleDateString()
+                                : "—"}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -535,56 +470,6 @@ export default function HiringManagerEntry() {
             </div>
           )}
 
-          {/* TAB CONTENT: DEPARTMENT ROLES */}
-          {activeTab === "roles" && (
-            <div className="card-box">
-              <div className="card-box-header">
-                <div>
-                  <h2 className="card-box-title">Open Roles & Demand</h2>
-                  <p className="card-box-subtitle">Active hiring requisitions mapped to your department</p>
-                </div>
-              </div>
-
-              {rolesList.length === 0 ? (
-                <div className="empty-state">
-                  <BriefcaseBusiness className="empty-icon" />
-                  <p className="empty-title">No department roles registered</p>
-                  <p className="empty-desc">No active roles are currently assigned to your team.</p>
-                </div>
-              ) : (
-                <div className="table-wrapper">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Position Title</th>
-                        <th>Department</th>
-                        <th>Active Applicants</th>
-                        <th>Open Pipeline</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rolesList.map((r, i) => (
-                        <tr key={i}>
-                          <td>
-                            <strong style={{ fontWeight: 600 }}>{r.role || "Role"}</strong>
-                          </td>
-                          <td>{r.department || "Engineering"}</td>
-                          <td>{r.candidateCount} total</td>
-                          <td>
-                            <strong style={{ color: "#4f46e5" }}>{r.openCandidateCount} in progress</strong>
-                          </td>
-                          <td>
-                            <span className="status-pill selected">Actively Hiring</span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
         </main>
         )}
 
@@ -652,6 +537,19 @@ export default function HiringManagerEntry() {
                         {new Date(candidateDetail.appliedDate || candidateDetail.createdAt).toLocaleDateString()}
                       </span>
                     </div>
+                    {candidateDetail.resumeUrl && (
+                      <div className="detail-info-item">
+                        <span className="detail-info-label">Resume</span>
+                        <a
+                          className="detail-info-val inline-flex items-center gap-1 text-blue-700 hover:underline"
+                          href={candidateDetail.resumeUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          View resume <ExternalLink size={13} />
+                        </a>
+                      </div>
+                    )}
                   </div>
 
                   {/* Interview Rounds & Feedbacks */}
@@ -671,31 +569,38 @@ export default function HiringManagerEntry() {
                           <div key={idx} className="round-card">
                             <div className="round-card-top">
                               <span style={{ fontWeight: 600, fontSize: "13px" }}>
-                                Round {round.round}: {round.status || "Scheduled"}
+                                {round.roundName || `Round ${round.round}`} · {round.status || "Scheduled"}
                               </span>
-                              {round.rating ? (
-                                <div className="stars-row">
-                                  {[1, 2, 3, 4, 5].map((star) => (
-                                    <Star
-                                      key={star}
-                                      size={14}
-                                      className={`star-icon ${star <= round.rating ? "filled" : ""}`}
-                                    />
-                                  ))}
-                                  <span style={{ fontSize: "12px", fontWeight: 700, marginLeft: "4px" }}>
-                                    {round.rating}/5
+                              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+                                {round.score != null && (
+                                  <span className="status-pill interview">
+                                    Score: {round.score}/100
                                   </span>
-                                </div>
-                              ) : (
-                                <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                                  No rating submitted yet
-                                </span>
-                              )}
+                                )}
+                                {round.rating != null ? (
+                                  <div className="stars-row">
+                                    {[1, 2, 3, 4, 5].map((star) => (
+                                      <Star
+                                        key={star}
+                                        size={14}
+                                        className={`star-icon ${star <= round.rating ? "filled" : ""}`}
+                                      />
+                                    ))}
+                                    <span style={{ fontSize: "12px", fontWeight: 700, marginLeft: "4px" }}>
+                                      {round.rating}/5
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                                    No rating submitted yet
+                                  </span>
+                                )}
+                              </div>
                             </div>
 
                             <p style={{ fontSize: "12px", color: "var(--muted-foreground)", marginBottom: "6px" }}>
-                              Interviewer: {round.interviewerId?.name || "Assigned Panelist"} ({round.interviewerId?.email || "Panel"})
-                              • Date: {new Date(round.scheduledAt).toLocaleDateString()}
+                              Type: {round.interviewType || "Interview"} • Interviewer: {round.interviewerId?.name || "Assigned Panelist"} ({round.interviewerId?.email || "Panel"})
+                              {round.scheduledAt && ` • Date: ${new Date(round.scheduledAt).toLocaleString()}`}
                             </p>
 
                             {round.feedback ? (
@@ -854,109 +759,6 @@ export default function HiringManagerEntry() {
         </div>
       )}
 
-      {/* ============================================================
-          APPROVAL ACTION MODAL
-          ============================================================ */}
-      {selectedApproval && (
-        <div className="modal-overlay" onClick={() => setSelectedApproval(null)}>
-          <div className="modal-dialog" style={{ maxWidth: "520px" }} onClick={(e) => e.stopPropagation()}>
-            <header className="modal-header">
-              <h3 className="modal-title">Approve Offer / Letter Request</h3>
-              <button
-                type="button"
-                className="modal-close-btn"
-                onClick={() => setSelectedApproval(null)}
-              >
-                ✕
-              </button>
-            </header>
-
-            <div className="modal-body">
-              <div style={{ background: "var(--secondary)", padding: "14px", borderRadius: "var(--radius-md)" }}>
-                <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>
-                  Request #{selectedApproval._id.slice(-6)}
-                </p>
-                <p style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: "2px" }}>
-                  Entity: {selectedApproval.entityType || "Offer"} • Current Step: {selectedApproval.currentStep}
-                </p>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" htmlFor="approval-comment">
-                  <span>Comments</span>
-                  <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                    Mandatory for rejection
-                  </span>
-                </label>
-                <textarea
-                  id="approval-comment"
-                  rows={3}
-                  className="form-textarea"
-                  placeholder="Enter comments or reason for your decision..."
-                  value={approvalComment}
-                  onChange={(e) => setApprovalComment(e.target.value)}
-                />
-              </div>
-
-              <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
-                <button
-                  type="button"
-                  style={{
-                    flex: 1,
-                    padding: "10px",
-                    background: "#10b981",
-                    color: "#ffffff",
-                    borderRadius: "var(--radius-md)",
-                    fontWeight: 600,
-                    fontSize: "13px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "6px"
-                  }}
-                  disabled={submittingApproval}
-                  onClick={() => handleApprovalAction("approve")}
-                >
-                  <CheckCircle2 size={16} />
-                  <span>Approve Request</span>
-                </button>
-
-                <button
-                  type="button"
-                  style={{
-                    flex: 1,
-                    padding: "10px",
-                    background: "#ef4444",
-                    color: "#ffffff",
-                    borderRadius: "var(--radius-md)",
-                    fontWeight: 600,
-                    fontSize: "13px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "6px"
-                  }}
-                  disabled={submittingApproval}
-                  onClick={() => handleApprovalAction("reject")}
-                >
-                  <XCircle size={16} />
-                  <span>Reject Request</span>
-                </button>
-              </div>
-            </div>
-
-            <footer className="modal-footer">
-              <button
-                type="button"
-                className="btn-action-outline"
-                onClick={() => setSelectedApproval(null)}
-              >
-                Cancel
-              </button>
-            </footer>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

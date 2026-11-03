@@ -30,12 +30,34 @@ const interviewSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["scheduled", "completed", "cancelled"],
+      enum: ["scheduled", "completed", "cancelled", "rescheduled"],
       default: "scheduled",
     },
     meetingLink: {
       type: String,
       default: "",
+    },
+    score: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: null,
+    },
+    rating: {
+      type: Number,
+      min: 1,
+      max: 5,
+      default: null,
+    },
+    feedback: {
+      type: String,
+      trim: true,
+      maxlength: 5000,
+      default: "",
+    },
+    feedbackSubmittedAt: {
+      type: Date,
+      default: null,
     },
   },
   { timestamps: true }

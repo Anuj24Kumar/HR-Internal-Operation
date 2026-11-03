@@ -134,7 +134,7 @@ const loginUser = async (req, res) => {
     }
 
     // Auto-heal active candidate accounts if they were marked inactive by past application status changes
-    if (user.role === "candidate" && user.status !== "suspended" && user.status !== "inactive") {
+    if (["candidate", "intern", "employee"].includes(user.role) && user.status !== "suspended" && user.status !== "inactive") {
       if (!user.isActive || user.status !== "active") {
         user.isActive = true;
         user.status = "active";

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plus, Search, RefreshCw, Pencil, Trash2, Send,
-  FileDown, CheckCircle2, XCircle, Clock3, X,
+  FileDown, CheckCircle2, XCircle, Clock3, X, ExternalLink,
 } from "lucide-react";
 import { apiRequest } from "../api.js";
 import DataTable from "../components/DataTable.jsx";
@@ -82,7 +82,7 @@ export default function Offers() {
     try {
       const [offerResult, candidateResult] = await Promise.all([
         apiRequest("/offers"),
-        apiRequest("/candidates?limit=100&page=1"),
+        apiRequest("/candidates?limit=100&page=1&includeSelected=true"),
       ]);
 
       setOffers(Array.isArray(offerResult.data) ? offerResult.data : []);
@@ -132,11 +132,29 @@ export default function Offers() {
     sent: offers.filter((o) => o.status === "Sent").length,
   };
 
-  function openCreate() {
+  const candidateIdsWithOffers = new Set(
+    offers.map((offer) => {
+      const candidate = offer.candidateId;
+      return String(candidate && typeof candidate === "object" ? candidate._id : candidate || "");
+    })
+  );
+  const selectedCandidates = candidates.filter((candidate) => {
+    const isSelected =
+      String(candidate.hiringRecommendation?.status || "").toLowerCase() === "select" ||
+      String(candidate.status || "").toLowerCase() === "selected";
+    return isSelected && !candidateIdsWithOffers.has(String(candidate._id));
+  });
+
+  const selectedCandidate =
+    candidates.find((candidate) => String(candidate._id) === String(form.candidateId)) ||
+    candidateOf(editing);
+
+  function openCreate(candidate = null) {
     setEditing(null);
     setForm({
       ...EMPTY_FORM,
-      candidateId: candidates[0]?._id || "",
+      candidateId: candidate?._id || candidates[0]?._id || "",
+      designation: candidate?.position || candidates[0]?.position || "",
     });
     setError("");
     setNotice("");
@@ -366,6 +384,80 @@ export default function Offers() {
         })}
       </div>
 
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-200 px-5 py-4">
+          <h2 className="font-semibold text-slate-900">
+            Selected by Hiring Manager
+            <span className="ml-2 text-sm font-medium text-slate-500">
+              ({selectedCandidates.length} awaiting offer)
+            </span>
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Candidates recommended for selection are ready for HR to prepare an offer.
+          </p>
+        </div>
+
+        {loading ? (
+          <div className="p-8 text-center text-sm text-slate-500">Loading selected candidates...</div>
+        ) : selectedCandidates.length === 0 ? (
+          <div className="p-8 text-center text-sm text-slate-500">
+            No candidates are currently awaiting an offer.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+              <thead className="bg-slate-50 text-slate-600">
+                <tr>
+                  <th className="border-b border-slate-200 px-5 py-3 font-semibold">Candidate</th>
+                  <th className="border-b border-slate-200 px-5 py-3 font-semibold">Position</th>
+                  <th className="border-b border-slate-200 px-5 py-3 font-semibold">Interview evaluation</th>
+                  <th className="border-b border-slate-200 px-5 py-3 font-semibold">Hiring manager feedback</th>
+                  <th className="border-b border-slate-200 px-5 py-3 text-right font-semibold">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {selectedCandidates.map((candidate) => {
+                  const latestInterview = candidate.interviews?.[candidate.interviews.length - 1];
+                  return (
+                    <tr key={candidate._id} className="hover:bg-slate-50">
+                      <td className="px-5 py-4">
+                        <p className="font-semibold text-slate-800">
+                          {candidate.name || candidate.fullName || "Candidate"}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">{candidate.email || "—"}</p>
+                      </td>
+                      <td className="px-5 py-4 text-slate-700">
+                        <p>{candidate.position || "—"}</p>
+                        <p className="mt-1 text-xs text-slate-500">{candidate.department || "—"}</p>
+                      </td>
+                      <td className="px-5 py-4 text-slate-700">
+                        {latestInterview?.score != null ? `${latestInterview.score}/100` : "—"}
+                        {latestInterview?.rating != null && (
+                          <span className="ml-2 text-xs text-slate-500">{latestInterview.rating}/5 stars</span>
+                        )}
+                      </td>
+                      <td className="max-w-xs whitespace-normal px-5 py-4 text-slate-700">
+                        {candidate.hiringRecommendation?.comments || "—"}
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => openCreate(candidate)}
+                          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+                        >
+                          <Plus size={14} />
+                          Create offer
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
       <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row">
         <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-slate-200 px-3">
           <Search size={17} className="shrink-0 text-slate-400" />
@@ -533,7 +625,16 @@ export default function Offers() {
                     required
                     value={form.candidateId}
                     disabled={Boolean(editing)}
-                    onChange={(e) => setForm((f) => ({ ...f, candidateId: e.target.value }))}
+                    onChange={(e) => {
+                      const candidate = candidates.find(
+                        (item) => String(item._id) === e.target.value
+                      );
+                      setForm((current) => ({
+                        ...current,
+                        candidateId: e.target.value,
+                        designation: candidate?.position || current.designation,
+                      }));
+                    }}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm disabled:bg-slate-50"
                   >
                     <option value="">Select candidate</option>
@@ -545,6 +646,59 @@ export default function Offers() {
                     ))}
                   </select>
                 </label>
+
+                {selectedCandidate && (
+                  <section className="rounded-xl border border-blue-100 bg-blue-50/60 p-4 sm:col-span-2">
+                    <h3 className="text-sm font-semibold text-slate-900">Candidate details</h3>
+                    <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                      <div>
+                        <dt className="text-xs font-medium text-slate-500">Name</dt>
+                        <dd className="mt-0.5 font-semibold text-slate-800">
+                          {selectedCandidate.name || selectedCandidate.fullName || "—"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-medium text-slate-500">Email</dt>
+                        <dd className="mt-0.5 break-all text-slate-800">{selectedCandidate.email || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-medium text-slate-500">Phone</dt>
+                        <dd className="mt-0.5 text-slate-800">{selectedCandidate.phone || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-medium text-slate-500">Applied position</dt>
+                        <dd className="mt-0.5 text-slate-800">{selectedCandidate.position || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-medium text-slate-500">Department</dt>
+                        <dd className="mt-0.5 text-slate-800">{selectedCandidate.department || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-medium text-slate-500">Application status</dt>
+                        <dd className="mt-0.5 capitalize text-slate-800">{selectedCandidate.status || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs font-medium text-slate-500">Applied date</dt>
+                        <dd className="mt-0.5 text-slate-800">{date(selectedCandidate.appliedDate || selectedCandidate.createdAt)}</dd>
+                      </div>
+                      {selectedCandidate.resumeUrl && (
+                        <div>
+                          <dt className="text-xs font-medium text-slate-500">Resume</dt>
+                          <dd className="mt-1">
+                            <a
+                              href={selectedCandidate.resumeUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:underline"
+                            >
+                              View resume <ExternalLink size={14} />
+                            </a>
+                          </dd>
+                        </div>
+                      )}
+                    </dl>
+                  </section>
+                )}
 
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-medium text-slate-700">Designation</span>

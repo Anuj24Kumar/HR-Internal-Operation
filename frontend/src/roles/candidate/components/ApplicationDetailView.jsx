@@ -7,10 +7,15 @@ import {
   Clock,
   Copy,
   Check,
+  Download,
+  ExternalLink,
+  FileText,
   Hash,
   Mail,
   Phone,
   User,
+  Video,
+  CalendarDays,
 } from "lucide-react";
 import ApplicationStatusBadge from "./ApplicationStatusBadge.jsx";
 import ApplicationTimeline from "./ApplicationTimeline.jsx";
@@ -42,7 +47,62 @@ export default function ApplicationDetailView({ application, onBack }) {
   const candidateId = application.candidateId?._id || application.candidateId || "—";
   const applicationId = application._id || application.id || "—";
   const appliedDate = formatDate(application.appliedAt || application.createdAt);
-  const timelineEvents = application.timeline || [];
+
+  const rawTimelineEvents = Array.isArray(application.timeline) ? application.timeline : [];
+  const STAGE_CONFIG = [
+    {
+      stage: "Applied",
+      title: "Application Submitted",
+      description: `Application for ${position} (${jobType}) submitted successfully.`,
+    },
+    {
+      stage: "Interview",
+      title: "Interview Scheduled",
+      description: "Technical assessment and HR evaluation rounds.",
+    },
+    {
+      stage: "Selected",
+      title: "Candidate Selected",
+      description: "Candidate selection and employment/internship letter issuance.",
+    },
+    {
+      stage: "Offer",
+      title: "Final Decision & Offer",
+      description: "Official employment offer letter issuance and onboarding.",
+    },
+  ];
+
+  const normalizedStatus = String(status || "applied").toLowerCase();
+  const stageStatusIndex = {
+    applied: 0,
+    interview: 1,
+    interviewed: 1,
+    selected: 2,
+    offer: 3,
+    offer_sent: 3,
+    accepted: 3,
+  }[normalizedStatus] ?? 0;
+
+  const timelineEvents = STAGE_CONFIG.map((cfg, idx) => {
+    const existing = rawTimelineEvents.find((evt) => {
+      const s = String(evt.stage || "").toLowerCase();
+      const t = String(evt.title || "").toLowerCase();
+      if (s.includes("screening") || t.includes("screening")) return false;
+      return s === cfg.stage.toLowerCase() || t.includes(cfg.stage.toLowerCase());
+    });
+
+    const isCompleted = idx <= stageStatusIndex || existing?.completed || (idx === 0);
+    const date = existing?.date || (idx === 0 ? (application.appliedAt || application.createdAt) : null);
+
+    return {
+      _id: existing?._id || cfg.stage,
+      stage: cfg.stage,
+      title: existing?.title && !existing.title.toLowerCase().includes("screening") ? existing.title : cfg.title,
+      description: existing?.description && !existing.description.toLowerCase().includes("screening") ? existing.description : cfg.description,
+      completed: isCompleted,
+      date,
+    };
+  });
 
   const handleCopyId = () => {
     if (applicationId && applicationId !== "—") {
@@ -178,7 +238,7 @@ export default function ApplicationDetailView({ application, onBack }) {
                   key={evt._id || idx}
                   className="flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-3.5"
                 >
-                  <div className="mt-0.5 rounded-full bg-blue-100 p-1.5 text-blue-600">
+                  <div className={`mt-0.5 rounded-full p-1.5 ${evt.completed ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-400"}`}>
                     <CheckCircle2 className="h-4 w-4" />
                   </div>
                   <div className="flex-1">
@@ -202,6 +262,100 @@ export default function ApplicationDetailView({ application, onBack }) {
           </div>
         )}
       </section>
+
+      
+      {/* Assigned Interview Schedule & Meet Link Card */}
+      {Array.isArray(application.interviews) && application.interviews.length > 0 && (
+        <section className="rounded-2xl border border-blue-200 bg-white p-6 shadow-xs sm:p-8">
+          <div className="flex items-start gap-3 border-b border-slate-100 pb-5">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-100 text-blue-700">
+              <CalendarDays className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Assigned Interview Schedule</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Your assigned interview rounds and official meeting link.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 space-y-4">
+            {application.interviews.map((round, idx) => {
+              const interviewer = round.interviewerId;
+              const interviewerName =
+                typeof interviewer === "object"
+                  ? interviewer.name || [interviewer.firstName, interviewer.lastName].filter(Boolean).join(" ") || interviewer.email
+                  : "Assigned Panelist";
+
+              return (
+                <div
+                  key={round._id || idx}
+                  className="rounded-xl border border-blue-100 bg-blue-50/30 p-5 space-y-4"
+                >
+                  <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-slate-900 text-base">
+                          {round.roundName || `Interview Round ${round.round || idx + 1}`}
+                        </h3>
+                        <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold capitalize text-blue-700">
+                          {round.interviewType || "Technical"} Round
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold capitalize text-slate-700">
+                          {round.status || "Scheduled"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Interviewer: <span className="font-semibold text-slate-800">{interviewerName}</span>
+                      </p>
+                    </div>
+
+                    {round.meetingLink ? (
+                      <a
+                        href={round.meetingLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 transition"
+                      >
+                        <Video className="h-4 w-4" />
+                        Join Meeting
+                        <ExternalLink className="h-3.5 w-3.5 opacity-80" />
+                      </a>
+                    ) : (
+                      <span className="text-xs text-slate-400 italic">
+                        Meeting link will be shared prior to the session.
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid gap-3 border-t border-blue-100 pt-3 sm:grid-cols-2 text-xs text-slate-600">
+                    <div>
+                      <span className="text-slate-400">Scheduled Date & Time: </span>
+                      <span className="font-semibold text-slate-800">
+                        {round.scheduledAt ? new Date(round.scheduledAt).toLocaleString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        }) : "Not scheduled"}
+                      </span>
+                    </div>
+                    {round.meetingLink && (
+                      <div className="truncate">
+                        <span className="text-slate-400">Meeting URL: </span>
+                        <a href={round.meetingLink} target="_blank" rel="noopener noreferrer" className="font-medium text-blue-600 hover:underline">
+                          {round.meetingLink}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Application Details */}
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs sm:p-8">
@@ -260,6 +414,38 @@ export default function ApplicationDetailView({ application, onBack }) {
             </div>
             <p className="mt-2 text-sm font-semibold text-slate-900">{appliedDate}</p>
           </div>
+
+          {application.resumeUrl && (
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4 sm:col-span-2 lg:col-span-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                <FileText className="h-4 w-4 text-slate-400" />
+                Submitted Resume
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <a
+                  href={application.resumeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View Resume
+                </a>
+
+                <a
+                  href={application.resumeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download={application.resumeOriginalName || "Candidate_Resume.pdf"}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  <Download className="h-4 w-4" />
+                  Download
+                </a>
+              </div>
+            </div>
+          )}
         </div>
       </section>
     </div>

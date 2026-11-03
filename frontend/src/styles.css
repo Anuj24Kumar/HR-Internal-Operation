@@ -869,6 +869,24 @@ button {
   gap: 16px;
 }
 
+.interviewer-dashboard-metrics {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.interviewer-dashboard-metrics .metric-card {
+  min-width: 0;
+  padding: 18px 16px;
+}
+
+.interviewer-dashboard-metrics .metric-label {
+  line-height: 1.4;
+}
+
+.interviewer-dashboard-applicants {
+  width: 100%;
+}
+
 .metric-card {
   background: #ffffff;
   border: 1px solid var(--border);
@@ -1253,6 +1271,23 @@ button {
   gap: 20px;
 }
 
+.interviewer-evaluation-dialog form {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.interviewer-evaluation-dialog .modal-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.interviewer-evaluation-dialog .modal-footer {
+  flex-shrink: 0;
+}
+
 .modal-footer {
   padding: 16px 24px;
   border-top: 1px solid var(--border);
@@ -1458,6 +1493,18 @@ button {
   }
   .form-row {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1050px) {
+  .interviewer-dashboard-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .interviewer-dashboard-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 }

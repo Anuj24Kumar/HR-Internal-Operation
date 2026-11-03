@@ -133,7 +133,7 @@ const updateEmployee = async (req, res) => {
     const employee = await Employee.findByIdAndUpdate(
       id,
       { $set: updates },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     ).populate("managerId", "empId designation department");
 
     if (!employee) {
@@ -300,7 +300,7 @@ const updateEmployeeStatus = async (req, res) => {
     const employee = await Employee.findByIdAndUpdate(
       id,
       { $set: { status } },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     ).populate("managerId", "empId designation department");
 
     if (!employee) {

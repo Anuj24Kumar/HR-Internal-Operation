@@ -29,7 +29,12 @@ export default function useRoleAuth(role) {
         if (!isMounted) return;
 
         const authenticatedUser = result.user || result.data?.user;
-        if (!authenticatedUser || authenticatedUser.role !== role) {
+        const roleMatches =
+          authenticatedUser?.role === role ||
+          (role === "candidate" && ["intern", "employee"].includes(authenticatedUser?.role)) ||
+          ((role === "intern" || role === "employee") && authenticatedUser?.role === "candidate");
+
+        if (!authenticatedUser || !roleMatches) {
           console.error("Role mismatch or missing user in authentication response.", {
             expected: role,
             received: authenticatedUser?.role,
