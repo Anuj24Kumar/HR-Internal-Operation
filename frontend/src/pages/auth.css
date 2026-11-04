@@ -388,13 +388,14 @@
   aspect-ratio: 1;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(184, 222, 239, 0.64), rgba(226, 242, 249, 0.12) 68%, transparent 72%);
+  animation: auth-glow-pulse 5s ease-in-out infinite;
 }
 
 .auth-people-art {
   z-index: 1;
   width: min(100%, 500px);
   overflow: visible;
-  animation: auth-art-float 7s ease-in-out infinite;
+  animation: auth-art-float 5.5s ease-in-out infinite;
   transform-origin: 50% 75%;
 }
 
@@ -564,13 +565,18 @@
 }
 
 @keyframes auth-float {
-  0%, 100% { transform: translateY(0) rotate(-1deg); }
-  50% { transform: translateY(-10px) rotate(1deg); }
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-2deg); }
+  50% { transform: translate3d(0, -14px, 0) rotate(2deg); }
 }
 
 @keyframes auth-art-float {
-  0%, 100% { transform: translateY(0) rotate(-0.7deg); }
-  50% { transform: translateY(-7px) rotate(0.7deg); }
+  0%, 100% { transform: translate3d(0, 5px, 0) rotate(-1.5deg) scale(0.99); }
+  50% { transform: translate3d(0, -12px, 0) rotate(1.5deg) scale(1.015); }
+}
+
+@keyframes auth-glow-pulse {
+  0%, 100% { transform: scale(0.94); opacity: 0.68; }
+  50% { transform: scale(1.08); opacity: 1; }
 }
 
 @media (max-width: 900px) {
@@ -742,12 +748,5 @@
   .auth-panel {
     height: 72svh;
     flex-basis: 72svh;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .auth-sticker,
-  .auth-people-art {
-    animation: none;
   }
 }
