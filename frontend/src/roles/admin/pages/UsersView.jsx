@@ -18,12 +18,13 @@ import {
   fetchUserById,
   createUser,
   updateUser,
-  activateUser,
-  deactivateUser,
   deleteUser,
+  resetUserPassword,
+  setUserStatus,
 } from "../adminApi.js";
 import { RoleBadge, StatusBadge } from "../components/Badge.jsx";
 import Modal from "../components/Modal.jsx";
+import { useAlert } from "../../../components/AlertProvider.jsx";
 
 const AVAILABLE_ROLES = [
   { value: "admin", label: "Admin" },
@@ -36,6 +37,7 @@ const AVAILABLE_ROLES = [
 ];
 
 export default function UsersView() {
+  const alertApi = useAlert();
   const [users, setUsers] = useState([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -47,12 +49,12 @@ export default function UsersView() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [overrideRoleChange, setOverrideRoleChange] = useState(false);
 
   // Modals state
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   // Selected User State
   const [selectedUser, setSelectedUser] = useState(null);
@@ -75,7 +77,7 @@ export default function UsersView() {
       const qSearch = searchOverride !== undefined ? searchOverride : search;
       const res = await fetchUsers({
         role: roleFilter,
-        isActive: statusFilter,
+        status: statusFilter,
         search: qSearch,
         page,
         limit: 15,
@@ -118,37 +120,72 @@ export default function UsersView() {
   }
 
   // Edit User
-  function openEditModal(user) {
-    setSelectedUser(user);
+  async function openEditModal(user) {
+    let details = user;
+    try {
+      const response = await fetchUserById(user._id);
+      details = response.user || user;
+    } catch (error) {
+      alertApi.toastError("Could not load user", error.message);
+    }
+    setSelectedUser(details);
     setFormData({
-      name: user.name || "",
-      email: user.email || "",
-      password: "",
-      role: user.role === "hiring-manager" ? "hiring_manager" : (user.role || "candidate"),
-      department: user.department || "",
-      designation: user.designation || user.position || (user.candidateId?.position || user.employeeId?.designation || ""),
+      name: details.name || "",
+      email: details.email || "",
+      role: details.role === "hiring-manager" ? "hiring_manager" : (details.role || "candidate"),
+      phone: details.phone || "",
+      department: details.department || "",
+      designation: details.designation || details.position || "",
+      domain: details.domain || "",
+      track: details.track || "",
+      stipend: details.stipend || "",
+      employmentType: details.employmentType || "",
+      hasAcceptedOffer: details.hasAcceptedOffer,
     });
+    setOverrideRoleChange(false);
     setEditModalOpen(true);
   }
 
   async function handleUpdateUser(e) {
     e.preventDefault();
     if (!selectedUser) return;
+    const roleChanged = formData.role !== selectedUser.role;
+    const needsOverride = selectedUser.role === "candidate"
+      && ["intern", "employee"].includes(formData.role)
+      && !selectedUser.hasAcceptedOffer;
+    if (needsOverride && !overrideRoleChange) {
+      alertApi.toastError("Override required", "Tick the override checkbox before converting a candidate without an accepted offer.");
+      return;
+    }
+    if (roleChanged) {
+      const confirmed = await alertApi.confirm({
+        title: "Change user role?",
+        message: needsOverride
+          ? `This candidate has no accepted offer. Force-convert ${selectedUser.name} to ${formData.role}? The override will be audit-logged and HR will be notified.`
+          : `Change ${selectedUser.name}'s role from ${selectedUser.role} to ${formData.role}?`,
+        confirmText: needsOverride ? "Force convert" : "Change role",
+        type: needsOverride ? "warning" : "primary",
+      });
+      if (!confirmed) return;
+    }
     setSubmitting(true);
     try {
       const payload = {
         name: formData.name.trim(),
         email: formData.email.trim(),
         role: formData.role,
+        phone: formData.phone?.trim() || "",
         department: formData.department ? formData.department.trim() : "",
         designation: formData.designation ? formData.designation.trim() : "",
         position: formData.designation ? formData.designation.trim() : "",
+        domain: formData.domain || "",
+        track: formData.track || "",
+        stipend: formData.stipend === "" ? undefined : Number(formData.stipend),
+        employmentType: formData.employmentType || undefined,
+        ...(needsOverride ? { override: true } : {}),
       };
-      if (formData.password.trim()) {
-        payload.password = formData.password.trim();
-      }
       await updateUser(selectedUser._id, payload);
-      setAlert({ type: "success", message: `User "${formData.name}" role updated to "${formData.role}" successfully!` });
+      alertApi.toastSuccess("User updated", `Saved changes for ${formData.name}.`);
       setEditModalOpen(false);
       loadUsers();
     } catch (err) {
@@ -160,17 +197,46 @@ export default function UsersView() {
 
   // Toggle Activation
   async function handleToggleStatus(user) {
+    const nextStatus = user.status === "active" ? "suspended" : "active";
+    const confirmed = await alertApi.confirm({
+      title: nextStatus === "suspended" ? "Suspend this user?" : "Activate this user?",
+      message: nextStatus === "suspended"
+        ? `${user.name} will be blocked from signing in; their data will be retained.`
+        : `${user.name} will be able to sign in again.`,
+      confirmText: nextStatus === "suspended" ? "Suspend" : "Activate",
+    });
+    if (!confirmed) return;
     try {
-      if (user.isActive) {
-        await deactivateUser(user._id);
-        setAlert({ type: "success", message: `User ${user.name} deactivated.` });
-      } else {
-        await activateUser(user._id);
-        setAlert({ type: "success", message: `User ${user.name} re-activated.` });
-      }
+      await setUserStatus(user._id, nextStatus);
+      alertApi.toastSuccess("Account status updated", `${user.name} is now ${nextStatus}.`);
       loadUsers();
     } catch (err) {
-      setAlert({ type: "error", message: err.message });
+      alertApi.toastError("Status update failed", err.message);
+    }
+  }
+
+  async function handleResetPassword(user) {
+    const newPassword = await alertApi.prompt({
+      title: "Reset password",
+      message: `Set a new password for ${user.name} (at least 8 characters).`,
+      placeholder: "New password",
+    });
+    if (newPassword === null) return;
+    if (newPassword.length < 8) {
+      alertApi.toastError("Password too short", "Passwords must contain at least 8 characters.");
+      return;
+    }
+    const confirmed = await alertApi.confirm({
+      title: "Confirm password reset?",
+      message: `Reset ${user.name}'s password and notify them?`,
+      confirmText: "Reset password",
+    });
+    if (!confirmed) return;
+    try {
+      await resetUserPassword(user._id, newPassword);
+      alertApi.toastSuccess("Password reset", `${user.name} can sign in using the new password.`);
+    } catch (error) {
+      alertApi.toastError("Password reset failed", error.message);
     }
   }
 
@@ -185,22 +251,26 @@ export default function UsersView() {
     }
   }
 
-  // Delete User
-  function openDeleteModal(user) {
-    setSelectedUser(user);
-    setDeleteModalOpen(true);
-  }
-
-  async function handleDeleteConfirm() {
-    if (!selectedUser) return;
+  async function handleDelete(user) {
+    const confirmed = await alertApi.confirm({
+      title: "Delete user account?",
+      message: `Permanently delete ${user.name} (${user.email})? Users with dependent workflow records cannot be deleted.`,
+      confirmText: "Delete user",
+      type: "danger",
+    });
+    if (!confirmed) return;
     setSubmitting(true);
     try {
-      await deleteUser(selectedUser._id);
-      setAlert({ type: "success", message: `User "${selectedUser.name}" permanently deleted.` });
-      setDeleteModalOpen(false);
+      await deleteUser(user._id);
+      alertApi.toastSuccess("User deleted", `${user.name} was removed.`);
       loadUsers();
     } catch (err) {
-      setAlert({ type: "error", message: err.message });
+      const dependencies = err.data ? `\nDependent records: ${JSON.stringify(err.data)}` : "";
+      await alertApi.alert({
+        title: err.status === 409 ? "Deletion blocked" : "Delete failed",
+        message: `${err.message}${dependencies}`,
+        type: "warning",
+      });
     } finally {
       setSubmitting(false);
     }
@@ -302,8 +372,9 @@ export default function UsersView() {
               }}
             >
               <option value="">All Status</option>
-              <option value="true">Active Only</option>
-              <option value="false">Inactive Only</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="suspended">Suspended</option>
             </select>
           </div>
 
@@ -343,17 +414,19 @@ export default function UsersView() {
           <table className="admin-table">
             <thead>
               <tr>
-                <th>User</th>
+                <th>Name / Email</th>
+                <th>Emp ID</th>
                 <th>Role</th>
+                <th>Department</th>
                 <th>Status</th>
-                <th>Created At</th>
+                <th>Last Login</th>
                 <th style={{ textAlign: "right" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {users.length === 0 && !loading && (
                 <tr>
-                  <td colSpan="5" style={{ textAlign: "center", padding: "40px 20px", color: "#94a3b8" }}>
+                  <td colSpan="7" style={{ textAlign: "center", padding: "40px 20px", color: "#94a3b8" }}>
                     No users found matching current filters.
                   </td>
                 </tr>
@@ -395,6 +468,7 @@ export default function UsersView() {
                         </div>
                       </div>
                     </td>
+                    <td>{u.employeeId?.employeeId || u.employeeId?.empId || u.empId || "—"}</td>
                     <td>
                       <div style={{ display: "flex", flexDirection: "column", gap: "2px", alignItems: "flex-start" }}>
                         <RoleBadge role={u.role} />
@@ -405,11 +479,12 @@ export default function UsersView() {
                         )}
                       </div>
                     </td>
+                    <td>{u.department || u.employeeId?.department || "—"}</td>
                     <td>
-                      <StatusBadge active={u.isActive} />
+                      <StatusBadge label={u.status || (u.isActive ? "active" : "inactive")} active={u.status === "active" || (!u.status && u.isActive)} />
                     </td>
                     <td style={{ fontSize: "12.5px", color: "#64748b" }}>
-                      {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}
+                      {u.lastLogin ? new Date(u.lastLogin).toLocaleString() : "—"}
                     </td>
                     <td>
                       <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
@@ -438,17 +513,25 @@ export default function UsersView() {
                           type="button"
                           className={`admin-btn admin-btn-sm ${u.isActive ? "admin-btn-secondary" : "admin-btn-primary"}`}
                           onClick={() => handleToggleStatus(u)}
-                          title={u.isActive ? "Deactivate user" : "Activate user"}
+                          title={u.status === "active" ? "Suspend user" : "Activate user"}
                         >
                           <Power size={13} />
-                          <span>{u.isActive ? "Deactivate" : "Activate"}</span>
+                          <span>{u.status === "active" ? "Suspend" : "Activate"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn-secondary admin-btn-sm"
+                          onClick={() => handleResetPassword(u)}
+                          title="Reset password"
+                        >
+                          Reset password
                         </button>
 
                         {/* Delete Button */}
                         <button
                           type="button"
                           className="admin-btn admin-btn-danger admin-btn-sm"
-                          onClick={() => openDeleteModal(u)}
+                          onClick={() => handleDelete(u)}
                           title="Delete user"
                         >
                           <Trash2 size={13} />
@@ -554,15 +637,20 @@ export default function UsersView() {
             <input
               type="password"
               required
+              minLength={8}
               autoComplete="new-password"
               className="admin-input"
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              placeholder="Minimum 6 characters"
+              placeholder="Minimum 8 characters"
             />
             <div className="admin-form-hint">Password will be bcrypt-hashed before storage.</div>
           </div>
 
+          <div className="admin-form-group">
+            <label className="admin-form-label">Phone</label>
+            <input className="admin-input" value={formData.phone || ""} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
+          </div>
           <div className="admin-form-group">
             <label className="admin-form-label">Assigned Role *</label>
             <select
@@ -577,6 +665,32 @@ export default function UsersView() {
               ))}
             </select>
           </div>
+          <div className="admin-form-group">
+            <label className="admin-form-label">Department</label>
+            <input className="admin-input" value={formData.department || ""} onChange={(e) => setFormData({ ...formData, department: e.target.value })} />
+          </div>
+          {formData.role === "intern" && (
+            <div className="admin-form-group">
+              <label className="admin-form-label">Domain / Track</label>
+              <input className="admin-input" value={formData.domain || ""} onChange={(e) => setFormData({ ...formData, domain: e.target.value })} />
+              <input className="admin-input" placeholder="Track" value={formData.track || ""} onChange={(e) => setFormData({ ...formData, track: e.target.value })} />
+              <input className="admin-input" type="number" min="0" placeholder="Stipend" value={formData.stipend || ""} onChange={(e) => setFormData({ ...formData, stipend: e.target.value })} />
+            </div>
+          )}
+          {formData.role === "employee" && (
+            <>
+              <div className="admin-form-group">
+                <label className="admin-form-label">Designation</label>
+                <input className="admin-input" value={formData.designation || ""} onChange={(e) => setFormData({ ...formData, designation: e.target.value })} />
+              </div>
+              <div className="admin-form-group">
+                <label className="admin-form-label">Employment Type</label>
+                <select className="admin-select" value={formData.employmentType || ""} onChange={(e) => setFormData({ ...formData, employmentType: e.target.value })}>
+                  <option value="">Select type</option><option value="full_time">Full-time</option><option value="part_time">Part-time</option><option value="contract">Contract</option>
+                </select>
+              </div>
+            </>
+          )}
         </form>
       </Modal>
 
@@ -629,18 +743,6 @@ export default function UsersView() {
           </div>
 
           <div className="admin-form-group">
-            <label className="admin-form-label">New Password (Leave blank to keep unchanged)</label>
-            <input
-              type="password"
-              autoComplete="new-password"
-              className="admin-input"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              placeholder="••••••••"
-            />
-          </div>
-
-          <div className="admin-form-group">
             <label className="admin-form-label">Role Assignment *</label>
             <select
               className="admin-select"
@@ -657,6 +759,27 @@ export default function UsersView() {
               Select any role to change or promote this user (e.g. Candidate to Employee, Intern, HR, or other roles).
             </div>
           </div>
+          <div className="admin-form-group">
+            <label className="admin-form-label">Phone</label>
+            <input className="admin-input" value={formData.phone || ""} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
+          </div>
+          {selectedUser?.role === "candidate" && ["intern", "employee"].includes(formData.role) && !selectedUser.hasAcceptedOffer && (
+            <div style={{ background: "#fef3c7", color: "#92400e", borderRadius: "8px", padding: "12px", marginBottom: "12px" }}>
+              <strong>This candidate has no accepted offer.</strong> Saving will force-convert this account and audit-log the override.
+              <label style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "8px" }}>
+                <input type="checkbox" checked={overrideRoleChange} onChange={(e) => setOverrideRoleChange(e.target.checked)} />
+                I understand and approve this override
+              </label>
+            </div>
+          )}
+          {formData.role === "intern" && (
+            <div className="admin-form-group">
+              <label className="admin-form-label">Domain / Track</label>
+              <input className="admin-input" value={formData.domain || ""} onChange={(e) => setFormData({ ...formData, domain: e.target.value })} />
+              <input className="admin-input" placeholder="Track" value={formData.track || ""} onChange={(e) => setFormData({ ...formData, track: e.target.value })} />
+              <input className="admin-input" type="number" min="0" placeholder="Stipend" value={formData.stipend || ""} onChange={(e) => setFormData({ ...formData, stipend: e.target.value })} />
+            </div>
+          )}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
             <div className="admin-form-group">
@@ -758,43 +881,6 @@ export default function UsersView() {
         )}
       </Modal>
 
-      {/* DELETE CONFIRMATION MODAL */}
-      <Modal
-        isOpen={deleteModalOpen}
-        onClose={() => setDeleteModalOpen(false)}
-        title="Confirm Permanent Deletion"
-        footer={
-          <>
-            <button
-              type="button"
-              className="admin-btn admin-btn-secondary"
-              onClick={() => setDeleteModalOpen(false)}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="admin-btn admin-btn-danger"
-              disabled={submitting}
-              onClick={handleDeleteConfirm}
-            >
-              {submitting ? "Deleting..." : "Permanently Delete"}
-            </button>
-          </>
-        }
-      >
-        <div style={{ display: "flex", gap: "12px" }}>
-          <AlertCircle size={24} style={{ color: "#dc2626", flexShrink: 0 }} />
-          <div>
-            <p style={{ margin: "0 0 8px", fontSize: "14px", fontWeight: "600", color: "#0f172a" }}>
-              Are you sure you want to delete user "{selectedUser?.name}" ({selectedUser?.email})?
-            </p>
-            <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-              This action cannot be undone. An immutable audit record of this deletion will be stored in the audit logs.
-            </p>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }

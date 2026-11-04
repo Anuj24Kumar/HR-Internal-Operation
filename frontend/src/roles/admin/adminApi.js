@@ -32,7 +32,10 @@ async function request(endpoint, options = {}) {
   }
 
   if (!response.ok || result.success === false) {
-    throw new Error(result.message || result.error?.message || "Request failed.");
+    const error = new Error(result.message || result.error?.message || "Request failed.");
+    error.status = response.status;
+    error.data = result.data;
+    throw error;
   }
 
   return result;
@@ -52,15 +55,34 @@ export async function fetchPipelineDistribution() {
 // ----------------------------------------------------
 // Users Management
 // ----------------------------------------------------
-export async function fetchUsers({ role = "", isActive = "", search = "", page = 1, limit = 20 } = {}) {
+export async function fetchUsers({ role = "", status = "", hasOffer = "", isActive = "", search = "", page = 1, limit = 20 } = {}) {
   const query = new URLSearchParams();
   if (role) query.set("role", role);
+  if (status) query.set("status", status);
+  if (hasOffer !== "") query.set("hasOffer", hasOffer);
   if (isActive !== "") query.set("isActive", isActive);
   if (search) query.set("search", search);
   query.set("page", page);
   query.set("limit", limit);
 
   return request(`/admin/users?${query.toString()}`);
+}
+
+export async function fetchOverview() {
+  return request("/admin/overview");
+}
+
+export async function fetchPipeline({ status = "", search = "", page = 1, limit = 20 } = {}) {
+  const query = new URLSearchParams();
+  if (status) query.set("status", status);
+  if (search) query.set("search", search);
+  query.set("page", page);
+  query.set("limit", limit);
+  return request(`/admin/pipeline?${query.toString()}`);
+}
+
+export async function fetchConversions({ page = 1, limit = 5 } = {}) {
+  return request(`/admin/conversions?page=${page}&limit=${limit}`);
 }
 
 export async function fetchUserById(id) {
@@ -99,41 +121,24 @@ export async function deleteUser(id) {
   });
 }
 
-// ----------------------------------------------------
-// Approval Workflows
-// ----------------------------------------------------
-export async function fetchWorkflows({ isActive = "" } = {}) {
-  const query = new URLSearchParams();
-  if (isActive !== "") query.set("isActive", isActive);
-  const qStr = query.toString();
-  return request(`/admin/workflows${qStr ? `?${qStr}` : ""}`);
-}
-
-export async function fetchWorkflowById(id) {
-  return request(`/admin/workflows/${id}`);
-}
-
-export async function fetchWorkflowByType(type) {
-  return request(`/admin/workflows/type/${type}`);
-}
-
-export async function createWorkflow(workflowData) {
-  return request("/admin/workflows", {
+export async function resetUserPassword(id, newPassword) {
+  return request(`/admin/users/${id}/reset-password`, {
     method: "POST",
-    body: JSON.stringify(workflowData),
+    body: JSON.stringify({ newPassword }),
   });
 }
 
-export async function updateWorkflow(id, workflowData) {
-  return request(`/admin/workflows/${id}`, {
+export async function setUserStatus(id, status) {
+  return request(`/admin/users/${id}/status`, {
     method: "PATCH",
-    body: JSON.stringify(workflowData),
+    body: JSON.stringify({ status }),
   });
 }
 
-export async function deleteWorkflow(id) {
-  return request(`/admin/workflows/${id}`, {
-    method: "DELETE",
+export async function overrideApplicationStatus(id, newStatus, reason) {
+  return request(`/admin/applications/${id}/override-status`, {
+    method: "POST",
+    body: JSON.stringify({ newStatus, reason }),
   });
 }
 
@@ -187,6 +192,9 @@ export async function fetchAuditLogs({
   userId = "",
   startDate = "",
   endDate = "",
+  from = "",
+  to = "",
+  search = "",
   page = 1,
   limit = 25,
 } = {}) {
@@ -196,6 +204,9 @@ export async function fetchAuditLogs({
   if (userId) query.set("userId", userId);
   if (startDate) query.set("startDate", startDate);
   if (endDate) query.set("endDate", endDate);
+  if (from) query.set("from", from);
+  if (to) query.set("to", to);
+  if (search) query.set("search", search);
   query.set("page", page);
   query.set("limit", limit);
 
@@ -213,6 +224,9 @@ export async function downloadAuditLogsExport(format = "csv", filters = {}) {
   if (filters.action) query.set("action", filters.action);
   if (filters.startDate) query.set("startDate", filters.startDate);
   if (filters.endDate) query.set("endDate", filters.endDate);
+  if (filters.from) query.set("from", filters.from);
+  if (filters.to) query.set("to", filters.to);
+  if (filters.search) query.set("search", filters.search);
 
   const token = getAuthToken();
   const response = await fetch(`${apiBaseUrl}/admin/audit/export?${query.toString()}`, {
@@ -236,9 +250,11 @@ export async function downloadAuditLogsExport(format = "csv", filters = {}) {
 // ----------------------------------------------------
 // Global Search
 // ----------------------------------------------------
-export async function performGlobalSearch(searchQuery) {
-  return request(`/admin/search?q=${encodeURIComponent(searchQuery)}`);
+export async function performGlobalSearch(searchQuery, limit = 10) {
+  return request(`/admin/search?q=${encodeURIComponent(searchQuery)}&limit=${limit}`);
 }
+
+export const globalSearch = performGlobalSearch;
 
 export async function downloadSearchExport(searchQuery, format = "csv") {
   const token = getAuthToken();

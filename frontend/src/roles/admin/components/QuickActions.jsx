@@ -1,12 +1,11 @@
 import React from "react";
-import { Users, FileText, GitBranch, History, ArrowRight, Briefcase, UserCheck } from "lucide-react";
+import { Users, FileText, History, ArrowRight, Briefcase, UserCheck } from "lucide-react";
 
 export default function QuickActions({ onSelectTab }) {
   const actions = [
     { id: "users", label: "Manage Users", icon: Users },
     { id: "recruitment", label: "Recruitment", icon: Briefcase },
     { id: "employees", label: "Employees", icon: UserCheck },
-    { id: "workflows", label: "Approval Workflows", icon: GitBranch },
     { id: "templates", label: "Templates", icon: FileText },
     { id: "audit", label: "Audit Logs", icon: History },
   ];

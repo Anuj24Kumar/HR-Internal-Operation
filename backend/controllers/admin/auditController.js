@@ -1,4 +1,47 @@
-const { AuditLog } = require("../../models");
+const { AuditLog, User } = require("../../models");
+
+const escapeCsv = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+
+const buildAuditFilter = async (queryParams) => {
+  const { module: mod, action, userId, startDate, endDate, from, to, search } = queryParams;
+  const query = {};
+  if (mod) query.module = mod;
+  if (action) query.action = action;
+  if (userId) query.userId = userId;
+
+  const lowerDate = from || startDate;
+  const upperDate = to || endDate;
+  if (lowerDate || upperDate) {
+    query.timestamp = {};
+    if (lowerDate) {
+      const date = new Date(lowerDate);
+      if (Number.isNaN(date.getTime())) throw new Error("Invalid from/startDate value");
+      query.timestamp.$gte = date;
+    }
+    if (upperDate) {
+      const date = new Date(upperDate);
+      if (Number.isNaN(date.getTime())) throw new Error("Invalid to/endDate value");
+      if (/^\d{4}-\d{2}-\d{2}$/.test(upperDate)) date.setHours(23, 59, 59, 999);
+      query.timestamp.$lte = date;
+    }
+  }
+
+  if (search?.trim()) {
+    const regex = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    const users = await User.find({ $or: [{ name: regex }, { email: regex }] }).select("_id").lean();
+    const matchingIds = users.map((user) => user._id);
+    query.userId = query.userId
+      ? matchingIds.some((id) => id.toString() === query.userId.toString()) ? query.userId : { $in: [] }
+      : { $in: matchingIds };
+  }
+  return query;
+};
+
+const pagination = (query) => {
+  const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
+  const limit = Math.min(100, Math.max(1, Number.parseInt(query.limit, 10) || 25));
+  return { page, limit, skip: (page - 1) * limit };
+};
 
 /**
  * 1. List audit log entries with filters (module, action, actor, date range)
@@ -6,45 +49,28 @@ const { AuditLog } = require("../../models");
  */
 const getAuditLogs = async (req, res) => {
   try {
-    const {
-      module: mod,
-      action,
-      userId,
-      startDate,
-      endDate,
-      page = 1,
-      limit = 25,
-    } = req.query;
-
-    const query = {};
-
-    if (mod) query.module = mod;
-    if (action) query.action = action;
-    if (userId) query.userId = userId;
-
-    if (startDate || endDate) {
-      query.timestamp = {};
-      if (startDate) query.timestamp.$gte = new Date(startDate);
-      if (endDate) query.timestamp.$lte = new Date(endDate);
-    }
-
-    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+    const query = await buildAuditFilter(req.query);
+    const { page, limit, skip } = pagination(req.query);
     const totalLogs = await AuditLog.countDocuments(query);
     const logs = await AuditLog.find(query)
       .populate("userId", "name email role")
       .sort({ timestamp: -1 })
       .skip(skip)
-      .limit(parseInt(limit, 10));
+      .limit(limit);
 
     res.status(200).json({
       success: true,
       total: totalLogs,
-      page: parseInt(page, 10),
-      totalPages: Math.ceil(totalLogs / parseInt(limit, 10)),
+      page,
+      totalPages: Math.ceil(totalLogs / limit),
+      pages: Math.ceil(totalLogs / limit),
       count: logs.length,
       logs,
     });
   } catch (error) {
+    if (error.message.startsWith("Invalid ")) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
     res.status(500).json({
       success: false,
       message: "Failed to retrieve audit logs",
@@ -90,16 +116,8 @@ const getAuditLogById = async (req, res) => {
  */
 const exportAuditLogs = async (req, res) => {
   try {
-    const { module: mod, action, format = "csv", startDate, endDate } = req.query;
-
-    const query = {};
-    if (mod) query.module = mod;
-    if (action) query.action = action;
-    if (startDate || endDate) {
-      query.timestamp = {};
-      if (startDate) query.timestamp.$gte = new Date(startDate);
-      if (endDate) query.timestamp.$lte = new Date(endDate);
-    }
+    const { format = "csv" } = req.query;
+    const query = await buildAuditFilter(req.query);
 
     const logs = await AuditLog.find(query)
       .populate("userId", "name email role")
@@ -115,11 +133,13 @@ const exportAuditLogs = async (req, res) => {
     // Default to CSV
     const csvHeaders = ["ID,Timestamp,Actor Name,Actor Email,Action,Module,Entity ID\n"];
     const csvRows = logs.map((log) => {
-      const actorName = log.userId ? `"${log.userId.name.replace(/"/g, '""')}"` : '"System"';
-      const actorEmail = log.userId ? `"${log.userId.email.replace(/"/g, '""')}"` : '""';
+      const actorName = log.userId ? escapeCsv(log.userId.name || "") : '"System"';
+      const actorEmail = log.userId ? escapeCsv(log.userId.email || "") : '""';
       const timestamp = new Date(log.timestamp).toISOString();
       const entityId = log.entityId ? log.entityId.toString() : "";
-      return `"${log._id}","${timestamp}",${actorName},${actorEmail},"${log.action}","${log.module}","${entityId}"`;
+      return [
+        log._id, timestamp, actorName, actorEmail, log.action, log.module, entityId,
+      ].map((value, index) => index === 2 || index === 3 ? value : escapeCsv(value)).join(",");
     });
 
     const csvOutput = csvHeaders.concat(csvRows.join("\n")).join("");
@@ -128,6 +148,9 @@ const exportAuditLogs = async (req, res) => {
     res.setHeader("Content-Type", "text/csv");
     return res.status(200).send(csvOutput);
   } catch (error) {
+    if (error.message.startsWith("Invalid ")) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
     res.status(500).json({
       success: false,
       message: "Failed to export audit logs",

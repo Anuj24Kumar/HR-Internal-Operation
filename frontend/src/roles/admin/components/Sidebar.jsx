@@ -3,7 +3,6 @@ import {
   Users,
   Briefcase,
   UserCheck,
-  GitBranch,
   FileText,
   History,
 } from "lucide-react";
@@ -20,7 +19,6 @@ export default function Sidebar({
     { id: "users", label: "Manage Users", icon: Users },
     { id: "recruitment", label: "Recruitment", icon: Briefcase },
     { id: "employees", label: "Employees", icon: UserCheck },
-    { id: "workflows", label: "Approval Workflows", icon: GitBranch },
     { id: "templates", label: "Templates", icon: FileText },
     { id: "audit", label: "Audit Logs", icon: History },
   ];

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Bell, User, LogOut, Menu, Check } from "lucide-react";
+import { Bell, User, LogOut, Menu, Check, Search } from "lucide-react";
 import { apiRequest } from "../api.js";
 
 function relativeTime(value) {
@@ -25,6 +25,8 @@ export default function UnifiedNavbar({
   onViewProfile,
   onLogout,
   onToggleMobile,
+  onOpenSearch,
+  rightContent,
   leftContent,
 }) {
   const [profileOpen, setProfileOpen] = useState(false);
@@ -138,6 +140,19 @@ export default function UnifiedNavbar({
 
       {/* Right side: Notification icon & Profile icon in circle */}
       <div className="flex items-center gap-3">
+        {rightContent}
+        {onOpenSearch && (
+          <button
+            type="button"
+            onClick={onOpenSearch}
+            className="hidden sm:flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm text-slate-600 hover:bg-slate-50"
+            aria-label="Open global search"
+          >
+            <Search size={16} />
+            <span>Search</span>
+            <kbd className="rounded border border-slate-200 px-1.5 py-0.5 text-[10px]">Ctrl K</kbd>
+          </button>
+        )}
         {/* Notification Icon */}
         {showNotifications && (
         <div className="relative" ref={notifRef}>

@@ -14,10 +14,16 @@ import {
 } from "lucide-react";
 import { fetchAuditLogs, fetchAuditLogById, downloadAuditLogsExport } from "../adminApi.js";
 import Modal from "../components/Modal.jsx";
+import { useAlert } from "../../../components/AlertProvider.jsx";
 
 const MODULES = [
-  { value: "users", label: "Users & Accounts (users)" },
-  { value: "workflows", label: "Workflows (workflows)" },
+  { value: "users", label: "Users" },
+  { value: "applications", label: "Applications" },
+  { value: "interviews", label: "Interviews" },
+  { value: "offers", label: "Offers" },
+  { value: "letters", label: "Letters" },
+  { value: "documents", label: "Documents" },
+  { value: "hiring_recommendations", label: "Hiring Recommendations" },
   { value: "letter_templates", label: "Letter Templates (letter_templates)" },
   { value: "candidates", label: "Candidates (candidates)" },
   { value: "employees", label: "Employees (employees)" },
@@ -31,9 +37,11 @@ const ACTIONS = [
   { value: "update", label: "Update" },
   { value: "delete", label: "Delete" },
   { value: "role_change", label: "Role Change" },
+  { value: "approve", label: "Approve" },
 ];
 
 export default function AuditLogsView() {
+  const alertApi = useAlert();
   const [logs, setLogs] = useState([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -47,6 +55,7 @@ export default function AuditLogsView() {
   const [actionFilter, setActionFilter] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [actorSearch, setActorSearch] = useState("");
 
   // Inspect Modal
   const [inspectModalOpen, setInspectModalOpen] = useState(false);
@@ -54,7 +63,7 @@ export default function AuditLogsView() {
 
   useEffect(() => {
     loadLogs();
-  }, [page, moduleFilter, actionFilter, startDate, endDate]);
+  }, [page, moduleFilter, actionFilter, startDate, endDate, actorSearch]);
 
   async function loadLogs() {
     setLoading(true);
@@ -63,6 +72,7 @@ export default function AuditLogsView() {
       const res = await fetchAuditLogs({
         module: moduleFilter,
         action: actionFilter,
+        search: actorSearch,
         startDate,
         endDate,
         page,
@@ -89,11 +99,18 @@ export default function AuditLogsView() {
   }
 
   async function handleExport(format) {
+    const confirmed = await alertApi.confirm({
+      title: "Export audit logs?",
+      message: `Download the audit records matching these filters as ${format.toUpperCase()}?`,
+      confirmText: "Export",
+    });
+    if (!confirmed) return;
     try {
       setExporting(true);
       await downloadAuditLogsExport(format, {
         module: moduleFilter,
         action: actionFilter,
+        search: actorSearch,
         startDate,
         endDate,
       });
@@ -162,6 +179,13 @@ export default function AuditLogsView() {
       <div className="admin-card" style={{ padding: "16px 20px", marginBottom: "20px" }}>
         <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
           {/* Module Filter */}
+          <input
+            className="admin-input"
+            style={{ width: 220 }}
+            placeholder="Filter user by name or email"
+            value={actorSearch}
+            onChange={(e) => { setActorSearch(e.target.value); setPage(1); }}
+          />
           <div style={{ width: "200px" }}>
             <select
               className="admin-select"
@@ -236,6 +260,7 @@ export default function AuditLogsView() {
               setActionFilter("");
               setStartDate("");
               setEndDate("");
+              setActorSearch("");
               setPage(1);
             }}
           >

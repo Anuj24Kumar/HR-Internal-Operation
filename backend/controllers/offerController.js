@@ -1,12 +1,70 @@
 const mongoose = require("mongoose");
 const fs = require("fs");
 const path = require("path");
-const { Offer, User, Application } = require("../models");
+const { Offer, User, Application, LetterTemplate } = require("../models");
 const { generateOfferPdf } = require("../utils/pdfGenerator");
 const { notify } = require("../utils/notificationHelper");
 const { recordAuditLog } = require("../utils/auditLogger");
 
 const userIdOf = (req) => req.user?.id || req.user?._id;
+
+const getOfferTemplates = async (req, res) => {
+  try {
+    const templates = await LetterTemplate.find({ type: "offer", isActive: true })
+      .select("name type htmlContent placeholders version")
+      .sort({ createdAt: -1 })
+      .lean();
+    return res.status(200).json({ success: true, data: templates });
+  } catch (error) {
+    console.error("Get offer templates error:", error);
+    return res.status(500).json({ success: false, message: "Failed to fetch offer templates" });
+  }
+};
+
+const resolveOfferTemplate = async (templateId, candidate, offer, suppliedValues) => {
+  if (!templateId) return { templateId: undefined, templateContent: "", placeholders: {} };
+  if (!mongoose.Types.ObjectId.isValid(templateId)) {
+    throw Object.assign(new Error("Invalid offer template ID"), { status: 400 });
+  }
+  const template = await LetterTemplate.findOne({ _id: templateId, type: "offer", isActive: true });
+  if (!template) {
+    throw Object.assign(new Error("Active offer template not found"), { status: 404 });
+  }
+
+  const salary = Number(offer.salary || 0).toLocaleString("en-IN");
+  const joiningDate = offer.joiningDate
+    ? new Date(offer.joiningDate).toLocaleDateString("en-IN")
+    : "";
+  const defaults = {
+    candidate_name: candidate.name || "",
+    employee_name: candidate.name || "",
+    intern_name: candidate.name || "",
+    name: candidate.name || "",
+    candidate_email: candidate.email || "",
+    email: candidate.email || "",
+    phone: candidate.phone || "",
+    designation: offer.designation || candidate.designation || candidate.position || "",
+    position: offer.designation || candidate.position || "",
+    department: offer.department || candidate.department || "",
+    salary,
+    stipend: salary,
+    joining_date: joiningDate,
+    issue_date: new Date().toLocaleDateString("en-IN"),
+    expiry_date: offer.expiryDate ? new Date(offer.expiryDate).toLocaleDateString("en-IN") : "",
+    offer_type: offer.offerType || "",
+    company_name: "HR",
+  };
+  const values = {};
+  for (const key of template.placeholders || []) {
+    const value = suppliedValues?.[key] ?? defaults[key];
+    values[key] = value == null ? "" : String(value);
+  }
+  return {
+    templateId: template._id,
+    templateContent: template.htmlContent,
+    placeholders: values,
+  };
+};
 
 // GET: Fetch all offers with optional status filter
 const getOffers = async (req, res) => {
@@ -19,6 +77,7 @@ const getOffers = async (req, res) => {
     const offers = await Offer.find(filter)
       .populate("candidateId", "name email phone position status")
       .populate("createdBy", "name email")
+      .populate("templateId", "name type htmlContent placeholders version")
       .sort({ createdAt: -1 });
 
     return res.status(200).json({
@@ -47,6 +106,8 @@ const createOffer = async (req, res) => {
       expiryDate,
       requiredDocuments,
       sendImmediately,
+      templateId,
+      placeholders,
     } = req.body;
 
     if (!candidateId || !offerType || !designation || salary === undefined || salary === null || !joiningDate) {
@@ -93,7 +154,7 @@ const createOffer = async (req, res) => {
       uploadedAt: null,
     }));
 
-    const offer = await Offer.create({
+    const offerData = {
       candidateId,
       applicationId: application._id,
       offerType,
@@ -105,7 +166,14 @@ const createOffer = async (req, res) => {
       status: "draft",
       approvalStatus: "not_required",
       createdBy: userIdOf(req),
-    });
+    };
+    Object.assign(offerData, await resolveOfferTemplate(
+      templateId,
+      candidate,
+      offerData,
+      placeholders
+    ));
+    const offer = await Offer.create(offerData);
 
     // Generate the PDF immediately so HR can preview before sending
     offer.pdfUrl = await generateOfferPdf(offer, candidate);
@@ -144,7 +212,7 @@ const createOffer = async (req, res) => {
     return res.status(201).json({ success: true, data: offer });
   } catch (e) {
     console.error("Create offer error:", e);
-    return res.status(500).json({ success: false, message: e.message });
+    return res.status(e.status || 500).json({ success: false, message: e.message });
   }
 };
 
@@ -158,7 +226,8 @@ const getOfferById = async (req, res) => {
 
     const offer = await Offer.findById(id)
       .populate("candidateId", "name email phone position status")
-      .populate("createdBy", "name email");
+      .populate("createdBy", "name email")
+      .populate("templateId", "name type htmlContent placeholders version");
 
     if (!offer) {
       return res.status(404).json({ success: false, message: "Offer not found" });
@@ -247,7 +316,7 @@ const updateOffer = async (req, res) => {
       return res.status(400).json({ success: false, message: "Only draft offers can be updated" });
     }
 
-    const { salary, designation, joiningDate, expiryDate, offerType, requiredDocuments } = req.body;
+    const { salary, designation, joiningDate, expiryDate, offerType, requiredDocuments, templateId, placeholders } = req.body;
 
     if (salary !== undefined) {
       if (!Number.isFinite(Number(salary)) || Number(salary) < 0) {
@@ -296,12 +365,21 @@ const updateOffer = async (req, res) => {
     }
 
     const candidate = await User.findById(offer.candidateId);
+    if (templateId !== undefined) {
+      Object.assign(offer, await resolveOfferTemplate(templateId, candidate, offer, placeholders));
+    } else if (placeholders && offer.templateContent) {
+      const template = await LetterTemplate.findById(offer.templateId).select("placeholders");
+      offer.placeholders = Object.fromEntries(
+        (template?.placeholders || []).map((key) => [key, String(placeholders[key] ?? "")])
+      );
+    }
     offer.pdfUrl = await generateOfferPdf(offer, candidate);
     await offer.save();
 
     const updatedOffer = await Offer.findById(offer._id)
       .populate("candidateId", "name email phone position status")
-      .populate("createdBy", "name email");
+      .populate("createdBy", "name email")
+      .populate("templateId", "name type htmlContent placeholders version");
 
     return res.status(200).json({
       success: true,
@@ -310,7 +388,7 @@ const updateOffer = async (req, res) => {
     });
   } catch (error) {
     console.error("Update offer error:", error);
-    return res.status(500).json({ success: false, message: "Failed to update offer" });
+    return res.status(error.status || 500).json({ success: false, message: error.message || "Failed to update offer" });
   }
 };
 
@@ -526,6 +604,7 @@ const deleteOffer = async (req, res) => {
 
 module.exports = {
   getOffers,
+  getOfferTemplates,
   createOffer,
   getOfferById,
   updateOffer,

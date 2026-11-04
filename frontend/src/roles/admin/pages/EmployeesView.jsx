@@ -12,6 +12,7 @@ import {
   Mail,
   Phone,
 } from "lucide-react";
+import { useAlert } from "../../../components/AlertProvider.jsx";
 
 const apiBase = import.meta.env.VITE_API_URL || "/api/v1";
 
@@ -133,6 +134,18 @@ function EmployeeDetailModal({ emp, onClose }) {
               </div>
             </div>
           )}
+          {emp.documents && (
+            <div style={{ marginTop: 16 }}>
+              <strong>Documents ({emp.documents.length})</strong>
+              {emp.documents.map((document) => <div key={document._id} style={{ fontSize: 13, padding: "5px 0" }}>{document.name || document.title || document.fileName || "Document"}</div>)}
+            </div>
+          )}
+          {emp.letters && (
+            <div style={{ marginTop: 12 }}>
+              <strong>Letters ({emp.letters.length})</strong>
+              {emp.letters.map((letter) => <div key={letter._id} style={{ fontSize: 13, padding: "5px 0" }}>{letter.title || letter.type || "Letter"} · {letter.status || "available"}</div>)}
+            </div>
+          )}
         </div>
         <div className="admin-modal-footer">
           <button className="admin-btn-secondary" onClick={onClose}>Close</button>
@@ -143,7 +156,10 @@ function EmployeeDetailModal({ emp, onClose }) {
 }
 
 export default function EmployeesView() {
+  const alertApi = useAlert();
+  const [activeTab, setActiveTab] = useState("intern");
   const [employees, setEmployees] = useState([]);
+  const [acceptedOffers, setAcceptedOffers] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -152,6 +168,8 @@ export default function EmployeesView() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
+  const [convertingOffer, setConvertingOffer] = useState(null);
+  const [conversion, setConversion] = useState({ targetRole: "employee", designation: "", department: "", salary: "", domain: "", track: "", stipend: "" });
   const limit = 15;
 
   const load = useCallback(async () => {
@@ -159,20 +177,31 @@ export default function EmployeesView() {
     setError(null);
     try {
       const q = new URLSearchParams();
-      if (search) q.set("search", search);
+      if (search && activeTab !== "accepted") q.set("search", search);
       if (deptFilter) q.set("department", deptFilter);
       if (statusFilter) q.set("status", statusFilter);
+      if (activeTab !== "accepted") q.set("role", activeTab);
       q.set("page", page);
       q.set("limit", limit);
-      const data = await apiFetch(`/employees?${q.toString()}`);
-      setEmployees(data.employees || data.data || []);
-      setTotal(data.total || data.pagination?.total || 0);
+      if (activeTab === "accepted") {
+        const data = await apiFetch("/employees/accepted-offers");
+        const offers = data.data || [];
+        const filtered = search ? offers.filter((offer) => `${offer.candidateId?.name || ""} ${offer.candidateId?.email || ""} ${offer.designation || ""}`.toLowerCase().includes(search.toLowerCase())) : offers;
+        setAcceptedOffers(filtered);
+        setEmployees([]);
+        setTotal(filtered.length);
+      } else {
+        const data = await apiFetch(`/employees?${q.toString()}`);
+        setEmployees(data.users || data.data || []);
+        setTotal(data.total || data.pagination?.total || 0);
+        setAcceptedOffers([]);
+      }
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [search, deptFilter, statusFilter, page]);
+  }, [search, deptFilter, statusFilter, page, activeTab]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -180,6 +209,42 @@ export default function EmployeesView() {
 
   // Collect unique departments from loaded employees for filter dropdown
   const departments = [...new Set(employees.map((e) => e.department).filter(Boolean))];
+
+  async function showDetails(employee) {
+    try {
+      const response = await apiFetch(`/employees/${employee._id}`);
+      setSelected({ ...response.data.user, documents: response.data.documents || [], letters: response.data.letters || [] });
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }
+
+  async function convertAcceptedOffer(event) {
+    event.preventDefault();
+    if (!convertingOffer) return;
+    const confirmed = await alertApi.confirm({
+      title: "Convert accepted offer?",
+      message: `Convert ${convertingOffer.candidateId?.name || "this candidate"} to ${conversion.targetRole}?`,
+      confirmText: "Convert",
+    });
+    if (!confirmed) return;
+    try {
+      await apiFetch("/employees/convert", {
+        method: "POST",
+        body: JSON.stringify({
+          offerId: convertingOffer._id,
+          ...conversion,
+          salary: conversion.salary ? Number(conversion.salary) : undefined,
+          stipend: conversion.stipend ? Number(conversion.stipend) : undefined,
+        }),
+      });
+      setConvertingOffer(null);
+      alertApi.toastSuccess("Candidate converted", "The accepted offer was converted successfully.");
+      load();
+    } catch (requestError) {
+      alertApi.toastError("Conversion failed", requestError.message);
+    }
+  }
 
   return (
     <div className="admin-page">
@@ -201,6 +266,14 @@ export default function EmployeesView() {
         </div>
       </div>
 
+      <div role="tablist" style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {[["intern", "Interns"], ["employee", "Employees"], ["accepted", "Accepted Offers"]].map(([value, title]) => (
+          <button key={value} type="button" role="tab" aria-selected={activeTab === value} className={`admin-btn ${activeTab === value ? "admin-btn-primary" : "admin-btn-secondary"}`} onClick={() => { setActiveTab(value); setPage(1); }}>
+            {title}
+          </button>
+        ))}
+      </div>
+
       {/* Filters */}
       <div style={{ display: "flex", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
         <div style={{ position: "relative", flex: 1, minWidth: "200px" }}>
@@ -216,7 +289,7 @@ export default function EmployeesView() {
             style={{ paddingLeft: "32px", width: "100%" }}
           />
         </div>
-        {departments.length > 0 && (
+        {activeTab !== "accepted" && departments.length > 0 && (
           <select
             className="admin-input"
             style={{ width: "170px" }}
@@ -229,7 +302,7 @@ export default function EmployeesView() {
             ))}
           </select>
         )}
-        <select
+        {activeTab !== "accepted" && <select
           className="admin-input"
           style={{ width: "150px" }}
           value={statusFilter}
@@ -238,9 +311,12 @@ export default function EmployeesView() {
           <option value="">All Statuses</option>
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
+          <option value="suspended">Suspended</option>
+          <option value="notice">Notice</option>
+          <option value="exited">Exited</option>
+          <option value="completed">Completed</option>
           <option value="terminated">Terminated</option>
-          <option value="on_leave">On Leave</option>
-        </select>
+        </select>}
         <button className="admin-btn-secondary" onClick={load} title="Refresh">
           <RefreshCw size={15} />
         </button>
@@ -257,14 +333,7 @@ export default function EmployeesView() {
           <table className="admin-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Employee ID</th>
-                <th>Department</th>
-                <th>Designation</th>
-                <th>Email</th>
-                <th>Status</th>
-                <th>Joined</th>
-                <th>Actions</th>
+                {activeTab === "accepted" ? <><th>Candidate</th><th>Position</th><th>Salary</th><th>Accepted</th><th>Action</th></> : <><th>Name</th><th>Employee ID</th><th>Department</th><th>Designation</th><th>Email</th><th>Status</th><th>Joined</th><th>Actions</th></>}
               </tr>
             </thead>
             <tbody>
@@ -274,7 +343,15 @@ export default function EmployeesView() {
                     Loading employees…
                   </td>
                 </tr>
-              ) : employees.length === 0 ? (
+              ) : activeTab === "accepted" ? acceptedOffers.length ? acceptedOffers.map((offer) => (
+                <tr key={offer._id}>
+                  <td>{offer.candidateId?.name}<small style={{ display: "block", color: "#64748b" }}>{offer.candidateId?.email}</small></td>
+                  <td>{offer.designation || offer.applicationId?.position || "—"}</td>
+                  <td>{offer.salary != null ? Number(offer.salary).toLocaleString() : "—"}</td>
+                  <td>{offer.acceptedAt ? new Date(offer.acceptedAt).toLocaleDateString() : "—"}</td>
+                  <td><button type="button" className="admin-btn admin-btn-primary admin-btn-sm" onClick={() => { setConvertingOffer(offer); setConversion((current) => ({ ...current, designation: offer.designation || offer.applicationId?.position || "" })); }}>Convert</button></td>
+                </tr>
+              )) : <tr><td colSpan={5} style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>No accepted offers are awaiting conversion.</td></tr> : employees.length === 0 ? (
                 <tr>
                   <td colSpan={8} style={{ textAlign: "center", padding: "40px", color: "#94a3b8" }}>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
@@ -326,7 +403,7 @@ export default function EmployeesView() {
                       <button
                         className="admin-btn-icon"
                         title="View details"
-                        onClick={() => setSelected(emp)}
+                        onClick={() => showDetails(emp)}
                       >
                         <Eye size={15} />
                       </button>
@@ -368,6 +445,20 @@ export default function EmployeesView() {
       </div>
 
       {selected && <EmployeeDetailModal emp={selected} onClose={() => setSelected(null)} />}
+      {convertingOffer && (
+        <div className="admin-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setConvertingOffer(null)}>
+          <form className="admin-modal" onSubmit={convertAcceptedOffer}>
+            <div className="admin-modal-header"><h3 className="admin-modal-title">Convert Accepted Offer</h3><button type="button" className="admin-modal-close" onClick={() => setConvertingOffer(null)}>×</button></div>
+            <div className="admin-modal-body">
+              <label className="admin-form-label">Target role</label><select className="admin-select" value={conversion.targetRole} onChange={(e) => setConversion({ ...conversion, targetRole: e.target.value })}><option value="employee">Employee</option><option value="intern">Intern</option></select>
+              <label className="admin-form-label">Designation</label><input className="admin-input" required value={conversion.designation} onChange={(e) => setConversion({ ...conversion, designation: e.target.value })} />
+              <label className="admin-form-label">Department</label><input className="admin-input" value={conversion.department} onChange={(e) => setConversion({ ...conversion, department: e.target.value })} />
+              {conversion.targetRole === "employee" ? <><label className="admin-form-label">Salary</label><input className="admin-input" type="number" min="0" value={conversion.salary} onChange={(e) => setConversion({ ...conversion, salary: e.target.value })} /></> : <><label className="admin-form-label">Domain</label><input className="admin-input" value={conversion.domain} onChange={(e) => setConversion({ ...conversion, domain: e.target.value })} /><label className="admin-form-label">Track</label><input className="admin-input" value={conversion.track} onChange={(e) => setConversion({ ...conversion, track: e.target.value })} /><label className="admin-form-label">Stipend</label><input className="admin-input" type="number" min="0" value={conversion.stipend} onChange={(e) => setConversion({ ...conversion, stipend: e.target.value })} /></>}
+            </div>
+            <div className="admin-modal-footer"><button type="button" className="admin-btn-secondary" onClick={() => setConvertingOffer(null)}>Cancel</button><button type="submit" className="admin-btn-primary">Convert</button></div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

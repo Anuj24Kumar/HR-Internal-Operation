@@ -121,7 +121,7 @@ export default function Overview() {
     );
   }
 
-  const user = intern.user || {};
+  const user = intern.user || intern;
   const tasks = onboarding.tasks;
 
   const totalTasks =

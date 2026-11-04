@@ -11,6 +11,8 @@ import { useNavigate } from "react-router-dom";
 
 const EMPTY_FORM = {
   candidateId: "",
+  templateId: "",
+  placeholderValues: {},
   offerType: "employee",
   salary: "",
   designation: "",
@@ -48,6 +50,14 @@ const date = (value) =>
       })
     : "—";
 
+const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+}[character]));
+
 function candidateOf(offer) {
   return offer?.candidateId && typeof offer.candidateId === "object"
     ? offer.candidateId
@@ -79,6 +89,7 @@ export default function Offers() {
   const navigate = useNavigate();
   const [offers, setOffers] = useState([]);
   const [candidates, setCandidates] = useState([]);
+  const [offerTemplates, setOfferTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -97,12 +108,14 @@ export default function Offers() {
     setError("");
 
     try {
-      const [offerResult, candidateResult] = await Promise.all([
+      const [offerResult, candidateResult, templateResult] = await Promise.all([
         apiRequest("/offers"),
         apiRequest("/candidates?limit=100&page=1&includeSelected=true"),
+        apiRequest("/offers/templates"),
       ]);
 
       setOffers(Array.isArray(offerResult.data) ? offerResult.data : []);
+      setOfferTemplates(Array.isArray(templateResult.data) ? templateResult.data : []);
       setCandidates(
         Array.isArray(candidateResult.data) ? candidateResult.data : []
       );
@@ -167,6 +180,36 @@ export default function Offers() {
   const selectedCandidate =
     candidates.find((candidate) => String(candidate._id) === String(form.candidateId)) ||
     candidateOf(editing);
+  const selectedTemplate = offerTemplates.find((template) => String(template._id) === String(form.templateId));
+  const autoPlaceholderValues = {
+    candidate_name: selectedCandidate?.name || selectedCandidate?.fullName || "",
+    employee_name: selectedCandidate?.name || selectedCandidate?.fullName || "",
+    intern_name: selectedCandidate?.name || selectedCandidate?.fullName || "",
+    name: selectedCandidate?.name || selectedCandidate?.fullName || "",
+    candidate_email: selectedCandidate?.email || "",
+    email: selectedCandidate?.email || "",
+    phone: selectedCandidate?.phone || "",
+    designation: form.designation || selectedCandidate?.position || "",
+    position: form.designation || selectedCandidate?.position || "",
+    department: selectedCandidate?.department || "",
+    salary: form.salary === "" ? "" : money(form.salary),
+    stipend: form.salary === "" ? "" : money(form.salary),
+    joining_date: form.joiningDate ? date(`${form.joiningDate}T00:00:00`) : "",
+    issue_date: date(new Date()),
+    expiry_date: form.expiryDate ? date(`${form.expiryDate}T00:00:00`) : "",
+    offer_type: form.offerType === "intern" ? "Intern" : "Employee",
+    company_name: "HR",
+  };
+  const effectivePlaceholderValues = Object.fromEntries(
+    (selectedTemplate?.placeholders || []).map((key) => [
+      key,
+      form.placeholderValues?.[key] ?? autoPlaceholderValues[key] ?? "",
+    ])
+  );
+  const offerTemplatePreview = selectedTemplate?.htmlContent?.replace(
+    /\{\{([a-zA-Z0-9_]+)\}\}/g,
+    (token, key) => escapeHtml(effectivePlaceholderValues[key] ?? autoPlaceholderValues[key] ?? token)
+  ) || "";
 
   function openCreate(candidate = null) {
     setEditing(null);
@@ -192,6 +235,8 @@ export default function Offers() {
     setEditing(offer);
     setForm({
       candidateId: candidate?._id || offer.candidateId || "",
+      templateId: typeof offer.templateId === "object" ? offer.templateId?._id || "" : offer.templateId || "",
+      placeholderValues: offer.placeholders || {},
       offerType: offer.offerType || "employee",
       salary: offer.salary ?? "",
       designation: offer.designation || "",
@@ -260,6 +305,8 @@ export default function Offers() {
         `${form.joiningDate}T00:00:00`
       ).toISOString(),
       requiredDocuments: (form.requiredDocuments || []).filter((d) => d.label && d.label.trim()),
+      templateId: form.templateId || "",
+      placeholders: effectivePlaceholderValues,
     };
 
     if (form.expiryDate) {
@@ -728,6 +775,19 @@ export default function Offers() {
               )}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <label className="block sm:col-span-2">
+                  <span className="mb-1.5 block text-sm font-medium text-slate-700">Offer letter template</span>
+                  <select
+                    value={form.templateId || ""}
+                    onChange={(event) => setForm((current) => ({ ...current, templateId: event.target.value, placeholderValues: {} }))}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                  >
+                    <option value="">Use the standard offer letter</option>
+                    {offerTemplates.map((template) => <option key={template._id} value={template._id}>{template.name} · v{template.version || 1}</option>)}
+                  </select>
+                  {!offerTemplates.length && <span className="mt-1 block text-xs text-slate-500">No active offer templates are available. An admin can create one in Templates.</span>}
+                </label>
+
+                <label className="block sm:col-span-2">
                   <span className="mb-1.5 block text-sm font-medium text-slate-700">Candidate</span>
                   <select
                     name="candidateId"
@@ -742,6 +802,7 @@ export default function Offers() {
                         ...current,
                         candidateId: e.target.value,
                         designation: candidate?.position || current.designation,
+                        placeholderValues: {},
                       }));
                     }}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm disabled:bg-slate-50"
@@ -987,6 +1048,31 @@ export default function Offers() {
                     ))
                   )}
                 </div>
+
+                {selectedTemplate && (
+                  <section className="space-y-4 rounded-xl border border-slate-200 p-4 sm:col-span-2">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-900">Template placeholders</h3>
+                      <p className="mt-1 text-xs text-slate-500">Values are filled from the candidate and offer details where possible. Edit any value before saving or sending.</p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {(selectedTemplate.placeholders || []).map((key) => (
+                        <label key={key} className="block">
+                          <span className="mb-1 block text-xs font-medium text-slate-600">{key.replace(/_/g, " ")}</span>
+                          <input
+                            value={effectivePlaceholderValues[key] || ""}
+                            onChange={(event) => setForm((current) => ({ ...current, placeholderValues: { ...current.placeholderValues, [key]: event.target.value } }))}
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    <div>
+                      <h4 className="mb-2 text-sm font-semibold text-slate-800">Offer letter preview</h4>
+                      <iframe title="Rendered offer template preview" sandbox="" srcDoc={offerTemplatePreview} className="h-72 w-full rounded-lg border border-slate-200 bg-white" />
+                    </div>
+                  </section>
+                )}
 
               </div>
 

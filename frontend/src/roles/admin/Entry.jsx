@@ -11,7 +11,6 @@ import DashboardView from "./pages/DashboardView.jsx";
 import UsersView from "./pages/UsersView.jsx";
 import RecruitmentView from "./pages/RecruitmentView.jsx";
 import EmployeesView from "./pages/EmployeesView.jsx";
-import WorkflowsView from "./pages/WorkflowsView.jsx";
 import TemplatesView from "./pages/TemplatesView.jsx";
 import AuditLogsView from "./pages/AuditLogsView.jsx";
 import ProfileView from "./pages/ProfileView.jsx";
@@ -20,6 +19,7 @@ export default function AdminEntry() {
   const { logout } = useRoleAuth("admin");
   const [currentUser, setCurrentUser] = useState(null);
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [recruitmentStatus, setRecruitmentStatus] = useState("");
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -56,6 +56,7 @@ export default function AdminEntry() {
       <GlobalSearchModal
         isOpen={searchModalOpen}
         onClose={() => setSearchModalOpen(false)}
+        onNavigate={setActiveTab}
       />
 
       {/* Dark Sidebar with identical design across all roles */}
@@ -82,12 +83,18 @@ export default function AdminEntry() {
           <ProfileView user={currentUser} />
         )}
         {activeTab === "dashboard" && (
-          <DashboardView user={currentUser} onSelectTab={setActiveTab} />
+          <DashboardView
+            user={currentUser}
+            onSelectTab={setActiveTab}
+            onSelectStatus={(status) => {
+              setRecruitmentStatus(status);
+              setActiveTab("recruitment");
+            }}
+          />
         )}
         {activeTab === "users" && <UsersView />}
-        {activeTab === "recruitment" && <RecruitmentView />}
+        {activeTab === "recruitment" && <RecruitmentView initialStatus={recruitmentStatus} />}
         {activeTab === "employees" && <EmployeesView />}
-        {activeTab === "workflows" && <WorkflowsView />}
         {activeTab === "templates" && <TemplatesView />}
         {activeTab === "audit" && <AuditLogsView />}
       </div>

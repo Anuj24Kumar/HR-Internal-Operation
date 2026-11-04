@@ -32,7 +32,7 @@ export default function InternNavbar({ userMessage, onLogout, onToggleMobile }) 
     };
   }, []);
 
-  const userObj = profile?.user;
+  const userObj = profile?.user || profile;
   const fullName =
     [userObj?.firstName, userObj?.lastName].filter(Boolean).join(" ") ||
     userObj?.name ||

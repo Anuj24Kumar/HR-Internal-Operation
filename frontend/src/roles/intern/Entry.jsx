@@ -8,7 +8,6 @@ import MyProfile from "./pages/MyProfile.jsx";
 import MyOnboarding from "./pages/MyOnboarding.jsx";
 import MyDocuments from "./pages/MyDocuments.jsx";
 import MyOffer from "../candidate/pages/MyOffer.jsx";
-import MyLetters from "../employee/pages/MyLetters.jsx";
 
 export default function InternEntry() {
   const { message, logout } = useRoleAuth("intern");
@@ -28,7 +27,6 @@ export default function InternEntry() {
         <Route path="offer" element={<MyOffer />} />
         <Route path="onboarding" element={<MyOnboarding />} />
         <Route path="documents" element={<MyDocuments />} />
-        <Route path="letters" element={<MyLetters />} />
 
         <Route
           path="*"

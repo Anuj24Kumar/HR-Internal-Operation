@@ -6,11 +6,11 @@ const requireAdmin = require("../../middleware/admin/requireAdmin");
 
 // Separate controllers in admin folder
 const userController = require("../../controllers/admin/userController");
-const workflowController = require("../../controllers/admin/workflowController");
 const letterTemplateController = require("../../controllers/admin/letterTemplateController");
 const auditController = require("../../controllers/admin/auditController");
 const dashboardController = require("../../controllers/admin/dashboardController");
 const searchController = require("../../controllers/admin/searchController");
+const applicationController = require("../../controllers/admin/applicationController");
 
 // Health check endpoint (Public)
 router.get("/health", (req, res) => {
@@ -28,21 +28,13 @@ router.use(verifyToken, requireAdmin);
 // ==========================================
 router.get("/users", userController.getAllUsers);
 router.post("/users", userController.createUser);
+router.post("/users/:id/reset-password", userController.resetPassword);
+router.patch("/users/:id/status", userController.setStatus);
 router.get("/users/:id", userController.getUserById);
 router.patch("/users/:id", userController.updateUser);
 router.patch("/users/:id/activate", userController.activateUser);
 router.patch("/users/:id/deactivate", userController.deactivateUser);
 router.delete("/users/:id", userController.deleteUser);
-
-// ==========================================
-// 2. Approval Workflow Configuration
-// ==========================================
-router.get("/workflows", workflowController.getAllWorkflows);
-router.post("/workflows", workflowController.createWorkflow);
-router.get("/workflows/type/:type", workflowController.getWorkflowByType);
-router.get("/workflows/:id", workflowController.getWorkflowById);
-router.patch("/workflows/:id", workflowController.updateWorkflow);
-router.delete("/workflows/:id", workflowController.deleteWorkflow);
 
 // ==========================================
 // 3. Letter Template Management
@@ -77,6 +69,10 @@ router.get("/dashboard", dashboardController.getAdminDashboard);
 router.get("/dashboard/admin", dashboardController.getAdminDashboard);
 router.get("/dashboard/pipeline", dashboardController.getPipelineDistribution);
 router.get("/dashboard/admin/pipeline", dashboardController.getPipelineDistribution);
+router.get("/overview", dashboardController.getOverview);
+router.get("/pipeline", dashboardController.getPipeline);
+router.get("/conversions", dashboardController.getConversions);
+router.post("/applications/:id/override-status", applicationController.overrideStatus);
 
 // ==========================================
 // 6. Global Search & Export

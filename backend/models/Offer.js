@@ -47,6 +47,8 @@ const offerSchema = new mongoose.Schema(
     signToken: { type: String, select: false },
     signTokenExpiresAt: { type: Date, select: false },
     templateId: { type: mongoose.Schema.Types.ObjectId, ref: "LetterTemplate" },
+    templateContent: { type: String, default: "" },
+    placeholders: { type: mongoose.Schema.Types.Mixed, default: {} },
     pdfUrl: String,
     approvalId: { type: mongoose.Schema.Types.ObjectId, ref: "ApprovalRequest" },
     approvalStatus: { type: String, enum: ["pending", "approved", "rejected", "not_required"], default: "not_required" },

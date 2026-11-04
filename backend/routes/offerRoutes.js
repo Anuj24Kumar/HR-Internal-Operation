@@ -5,6 +5,7 @@ const { protect } = require("../middleware/authMiddleware");
 const { authorize } = require("../middleware/roleMiddleware");
 const {
   getOffers,
+  getOfferTemplates,
   createOffer,
   getOfferById,
   updateOffer,
@@ -18,6 +19,7 @@ const {
 
 router.get("/", protect, authorize("admin", "hr", "hiring_manager"), getOffers);
 router.post("/", protect, authorize("admin", "hr"), createOffer);
+router.get("/templates", protect, authorize("admin", "hr"), getOfferTemplates);
 router.get(
   "/:id",
   protect,

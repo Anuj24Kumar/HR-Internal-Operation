@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import {
   fetchLetterTemplates,
-  fetchLetterTemplateById,
   createLetterTemplate,
   updateLetterTemplate,
   deactivateLetterTemplate,
@@ -23,14 +22,16 @@ import {
 } from "../adminApi.js";
 import { StatusBadge } from "../components/Badge.jsx";
 import Modal from "../components/Modal.jsx";
+import { useAlert } from "../../../components/AlertProvider.jsx";
 
 const TEMPLATE_TYPES = [
   { value: "offer", label: "Offer Letter (offer)" },
   { value: "appointment", label: "Appointment Letter (appointment)" },
-  { value: "internship_offer", label: "Internship Offer (internship_offer)" },
+  { value: "promotion", label: "Promotion Letter (promotion)" },
+  { value: "increment", label: "Increment Letter (increment)" },
   { value: "relieving", label: "Relieving Letter (relieving)" },
   { value: "experience", label: "Experience Certificate (experience)" },
-  { value: "custom", label: "Custom Document (custom)" },
+  { value: "warning", label: "Warning Letter (warning)" },
 ];
 
 const SUGGESTED_TOKENS = [
@@ -55,8 +56,12 @@ const DEFAULT_SAMPLE_HTML = `<div style="font-family: Arial, sans-serif; padding
   <br/>
   <p>Warm regards,<br/><strong>Human Resources Team</strong><br/>{{company_name}}</p>
 </div>`;
+const extractPlaceholders = (html) => Array.from(
+  new Set(Array.from(String(html || "").matchAll(/\{\{([a-zA-Z0-9_]+)\}\}/g), (match) => match[1]))
+);
 
 export default function TemplatesView() {
+  const alertApi = useAlert();
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState(null);
@@ -69,7 +74,6 @@ export default function TemplatesView() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -132,16 +136,12 @@ export default function TemplatesView() {
     setPreviewModalOpen(true);
   }
 
-  function openDeleteModal(template) {
-    setSelectedTemplate(template);
-    setDeleteModalOpen(true);
-  }
-
   function insertToken(token) {
     const tokenStr = `{{${token}}}`;
     setFormData((prev) => ({
       ...prev,
       htmlContent: prev.htmlContent + " " + tokenStr,
+      placeholders: extractPlaceholders(prev.htmlContent + " " + tokenStr),
     }));
   }
 
@@ -149,10 +149,13 @@ export default function TemplatesView() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await createLetterTemplate(formData);
+      await createLetterTemplate({
+        ...formData,
+        placeholders: extractPlaceholders(formData.htmlContent),
+      });
       setAlert({ type: "success", message: `Template "${formData.name}" created successfully!` });
       setCreateModalOpen(false);
-      loadTemplates();
+      await loadTemplates();
     } catch (err) {
       setAlert({ type: "error", message: err.message });
     } finally {
@@ -169,13 +172,14 @@ export default function TemplatesView() {
         name: formData.name,
         type: formData.type,
         htmlContent: formData.htmlContent,
+        placeholders: extractPlaceholders(formData.htmlContent),
       });
       setAlert({
         type: "success",
         message: `Template updated to version ${res.template?.version || selectedTemplate.version + 1}!`,
       });
       setEditModalOpen(false);
-      loadTemplates();
+      await loadTemplates();
     } catch (err) {
       setAlert({ type: "error", message: err.message });
     } finally {
@@ -184,6 +188,12 @@ export default function TemplatesView() {
   }
 
   async function handleDeactivate(template) {
+    const confirmed = await alertApi.confirm({
+      title: "Deactivate template?",
+      message: `Deactivate "${template.name}"? Existing letters are not affected.`,
+      confirmText: "Deactivate",
+    });
+    if (!confirmed) return;
     try {
       await deactivateLetterTemplate(template._id);
       setAlert({ type: "success", message: `Template "${template.name}" deactivated.` });
@@ -193,13 +203,18 @@ export default function TemplatesView() {
     }
   }
 
-  async function handleDeleteConfirm() {
-    if (!selectedTemplate) return;
+  async function handleDeleteConfirm(template) {
+    const confirmed = await alertApi.confirm({
+      title: "Delete template?",
+      message: `Permanently delete "${template.name}"?`,
+      confirmText: "Delete template",
+      type: "danger",
+    });
+    if (!confirmed) return;
     setSubmitting(true);
     try {
-      await deleteLetterTemplate(selectedTemplate._id);
-      setAlert({ type: "success", message: `Template "${selectedTemplate.name}" deleted successfully.` });
-      setDeleteModalOpen(false);
+      await deleteLetterTemplate(template._id);
+      setAlert({ type: "success", message: `Template "${template.name}" deleted successfully.` });
       loadTemplates();
     } catch (err) {
       setAlert({ type: "error", message: err.message });
@@ -309,7 +324,7 @@ export default function TemplatesView() {
         </div>
       </div>
 
-      {/* Templates Grid */}
+      {/* Saved templates remain visible below the editor controls. */}
       <div
         style={{
           display: "grid",
@@ -317,6 +332,10 @@ export default function TemplatesView() {
           gap: "18px",
         }}
       >
+        <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h2 className="admin-card-title">Saved Templates</h2>
+          <span style={{ fontSize: 13, color: "#64748b" }}>{templates.length} template{templates.length === 1 ? "" : "s"}</span>
+        </div>
         {templates.length === 0 && !loading && (
           <div
             className="admin-card"
@@ -440,7 +459,7 @@ export default function TemplatesView() {
                 <button
                   type="button"
                   className="admin-btn admin-btn-danger admin-btn-sm"
-                  onClick={() => openDeleteModal(tpl)}
+                  onClick={() => handleDeleteConfirm(tpl)}
                   title="Delete template"
                 >
                   <Trash2 size={13} />
@@ -548,29 +567,12 @@ export default function TemplatesView() {
           </div>
 
           {editorTab === "code" ? (
-            <div className="admin-form-group">
-              <textarea
-                className="admin-textarea"
-                rows={12}
-                style={{ fontFamily: "monospace", fontSize: "12.5px" }}
-                value={formData.htmlContent}
-                onChange={(e) => setFormData({ ...formData, htmlContent: e.target.value })}
-                required
-              />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <textarea className="admin-textarea" rows={12} style={{ fontFamily: "monospace", fontSize: "12.5px" }} value={formData.htmlContent} onChange={(e) => setFormData({ ...formData, htmlContent: e.target.value, placeholders: extractPlaceholders(e.target.value) })} required />
+              <iframe title="Live template preview" sandbox="" srcDoc={getRenderedPreviewHtml(formData.htmlContent)} style={{ width: "100%", minHeight: 280, border: "1px solid #e2e8f0", borderRadius: 8, background: "white" }} />
             </div>
           ) : (
-            <div
-              style={{
-                border: "1px solid #e2e8f0",
-                borderRadius: "8px",
-                padding: "20px",
-                background: "#ffffff",
-                minHeight: "260px",
-                maxHeight: "360px",
-                overflowY: "auto",
-              }}
-              dangerouslySetInnerHTML={{ __html: getRenderedPreviewHtml(formData.htmlContent) }}
-            />
+            <iframe title="Template sample preview" sandbox="" srcDoc={getRenderedPreviewHtml(formData.htmlContent)} style={{ width: "100%", height: 360, border: "1px solid #e2e8f0", borderRadius: 8 }} />
           )}
         </form>
       </Modal>
@@ -670,29 +672,12 @@ export default function TemplatesView() {
           </div>
 
           {editorTab === "code" ? (
-            <div className="admin-form-group">
-              <textarea
-                className="admin-textarea"
-                rows={12}
-                style={{ fontFamily: "monospace", fontSize: "12.5px" }}
-                value={formData.htmlContent}
-                onChange={(e) => setFormData({ ...formData, htmlContent: e.target.value })}
-                required
-              />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <textarea className="admin-textarea" rows={12} style={{ fontFamily: "monospace", fontSize: "12.5px" }} value={formData.htmlContent} onChange={(e) => setFormData({ ...formData, htmlContent: e.target.value, placeholders: extractPlaceholders(e.target.value) })} required />
+              <iframe title="Live template preview" sandbox="" srcDoc={getRenderedPreviewHtml(formData.htmlContent)} style={{ width: "100%", minHeight: 280, border: "1px solid #e2e8f0", borderRadius: 8, background: "white" }} />
             </div>
           ) : (
-            <div
-              style={{
-                border: "1px solid #e2e8f0",
-                borderRadius: "8px",
-                padding: "20px",
-                background: "#ffffff",
-                minHeight: "260px",
-                maxHeight: "360px",
-                overflowY: "auto",
-              }}
-              dangerouslySetInnerHTML={{ __html: getRenderedPreviewHtml(formData.htmlContent) }}
-            />
+            <iframe title="Template sample preview" sandbox="" srcDoc={getRenderedPreviewHtml(formData.htmlContent)} style={{ width: "100%", height: 360, border: "1px solid #e2e8f0", borderRadius: 8 }} />
           )}
         </form>
       </Modal>
@@ -713,51 +698,7 @@ export default function TemplatesView() {
           </button>
         }
       >
-        <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", padding: "24px", background: "#ffffff" }}>
-          <div
-            dangerouslySetInnerHTML={{
-              __html: getRenderedPreviewHtml(selectedTemplate?.htmlContent),
-            }}
-          />
-        </div>
-      </Modal>
-
-      {/* DELETE CONFIRMATION MODAL */}
-      <Modal
-        isOpen={deleteModalOpen}
-        onClose={() => setDeleteModalOpen(false)}
-        title="Confirm Template Deletion"
-        footer={
-          <>
-            <button
-              type="button"
-              className="admin-btn admin-btn-secondary"
-              onClick={() => setDeleteModalOpen(false)}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="admin-btn admin-btn-danger"
-              disabled={submitting}
-              onClick={handleDeleteConfirm}
-            >
-              {submitting ? "Deleting..." : "Delete Template"}
-            </button>
-          </>
-        }
-      >
-        <div style={{ display: "flex", gap: "12px" }}>
-          <AlertCircle size={24} style={{ color: "#dc2626", flexShrink: 0 }} />
-          <div>
-            <p style={{ margin: "0 0 8px", fontSize: "14px", fontWeight: "600", color: "#0f172a" }}>
-              Are you sure you want to delete template "{selectedTemplate?.name}"?
-            </p>
-            <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-              Safety check: If any letter or offer has been generated using this template, deletion will be blocked to preserve document integrity. You can deactivate it instead.
-            </p>
-          </div>
-        </div>
+        <iframe title="Template preview" sandbox="" srcDoc={getRenderedPreviewHtml(selectedTemplate?.htmlContent)} style={{ width: "100%", minHeight: 420, border: "1px solid #e2e8f0", borderRadius: 8 }} />
       </Modal>
     </div>
   );
