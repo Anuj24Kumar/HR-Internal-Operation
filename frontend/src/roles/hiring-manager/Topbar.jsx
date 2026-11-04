@@ -12,7 +12,6 @@ export default function Topbar({
       roleLabel="Hiring Manager"
       onViewProfile={onOpenProfile}
       onLogout={logout}
-      notifications={[]}
       onToggleMobile={onToggleMobile}
     />
   );

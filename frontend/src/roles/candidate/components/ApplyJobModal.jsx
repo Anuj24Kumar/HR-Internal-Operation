@@ -16,7 +16,7 @@ const POPULAR_POSITIONS = [
 
 export default function ApplyJobModal({ isOpen, onClose, profile, onSuccess }) {
   const [position, setPosition] = useState("");
-  const [jobType, setJobType] = useState("Full-time");
+  const [jobType, setJobType] = useState("full_time");
   const [resumeFile, setResumeFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -201,7 +201,7 @@ export default function ApplyJobModal({ isOpen, onClose, profile, onSuccess }) {
             <div className="grid grid-cols-2 gap-4">
               <label
                 className={`flex cursor-pointer items-center justify-between rounded-xl border p-4 transition ${
-                  jobType === "Full-time"
+                  jobType === "full_time"
                     ? "border-blue-600 bg-blue-50/50 ring-2 ring-blue-500/20"
                     : "border-slate-200 bg-white hover:bg-slate-50"
                 }`}
@@ -210,9 +210,9 @@ export default function ApplyJobModal({ isOpen, onClose, profile, onSuccess }) {
                   <input
                     type="radio"
                     name="jobType"
-                    value="Full-time"
-                    checked={jobType === "Full-time"}
-                    onChange={() => setJobType("Full-time")}
+                    value="full_time"
+                    checked={jobType === "full_time"}
+                    onChange={() => setJobType("full_time")}
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500"
                   />
                   <div>
@@ -224,7 +224,7 @@ export default function ApplyJobModal({ isOpen, onClose, profile, onSuccess }) {
 
               <label
                 className={`flex cursor-pointer items-center justify-between rounded-xl border p-4 transition ${
-                  jobType === "Internship"
+                  jobType === "internship"
                     ? "border-blue-600 bg-blue-50/50 ring-2 ring-blue-500/20"
                     : "border-slate-200 bg-white hover:bg-slate-50"
                 }`}
@@ -233,9 +233,9 @@ export default function ApplyJobModal({ isOpen, onClose, profile, onSuccess }) {
                   <input
                     type="radio"
                     name="jobType"
-                    value="Internship"
-                    checked={jobType === "Internship"}
-                    onChange={() => setJobType("Internship")}
+                    value="internship"
+                    checked={jobType === "internship"}
+                    onChange={() => setJobType("internship")}
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500"
                   />
                   <div>

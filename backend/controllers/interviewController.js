@@ -1,17 +1,16 @@
 
 const mongoose = require("mongoose");
-const Interview = require("../models/Interview");
-const Candidate = require("../models/Candidate");
-const User = require("../models/User");
-const Application = require("../models/Application");
+const { Interview, User, Application } = require("../models");
+const { notify } = require("../utils/notificationHelper");
+const { recordAuditLog } = require("../utils/auditLogger");
 
 const getInterviewers = async (req, res) => {
   try {
     const interviewers = await User.find({
       role: "interviewer",
-      isActive: { $ne: false },
+      isActive: true,
     })
-      .select("name firstName lastName email role")
+      .select("name email")
       .sort({ name: 1, email: 1 });
 
     return res.status(200).json({ success: true, data: interviewers });
@@ -23,61 +22,6 @@ const getInterviewers = async (req, res) => {
     });
   }
 };
-
-async function updateCandidateApplicationStage(candidate, assignedAt, scheduledDate, meetingLink, roundName) {
-  const candidateUserId = candidate.user || candidate.userId || candidate._id;
-  let application = await Application.findOne({
-    $or: [
-      { candidateId: candidateUserId },
-      { email: candidate.email ? candidate.email.toLowerCase() : null },
-    ],
-  }).sort({ appliedAt: -1 });
-
-  if (!application) return;
-
-  application.status = "Interview";
-  const formattedDate = scheduledDate
-    ? new Date(scheduledDate).toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : new Date(assignedAt).toLocaleDateString("en-IN");
-
-  const desc = meetingLink
-    ? `${roundName || "Interview"} scheduled on ${formattedDate}. Meeting Link: ${meetingLink}`
-    : `${roundName || "Interview"} scheduled on ${formattedDate}.`;
-
-  let hasInterviewStage = false;
-  for (const event of application.timeline) {
-    const stage = String(event.stage || "").trim().toLowerCase();
-    if (stage === "applied") {
-      event.completed = true;
-    } else if (stage === "interview") {
-      event.title = "Interview Scheduled";
-      event.description = desc;
-      event.completed = true;
-      event.date = scheduledDate || assignedAt;
-      hasInterviewStage = true;
-    } else if (stage === "selected" || stage === "offer") {
-      event.completed = false;
-      event.date = null;
-    }
-  }
-
-  if (!hasInterviewStage) {
-    application.timeline.push({
-      stage: "Interview",
-      title: "Interview Scheduled",
-      description: desc,
-      completed: true,
-      date: scheduledDate || assignedAt,
-    });
-  }
-  await application.save();
-}
 
 // GET all interviews for a candidate
 const getCandidateInterviews = async (req, res) => {
@@ -91,7 +35,7 @@ const getCandidateInterviews = async (req, res) => {
       });
     }
 
-    const candidate = await Candidate.findById(id);
+    const candidate = await User.findOne({ _id: id, role: { $in: ["candidate", "intern", "employee"] } });
 
     if (!candidate) {
       return res.status(404).json({
@@ -125,98 +69,77 @@ const getCandidateInterviews = async (req, res) => {
 const createInterview = async (req, res) => {
   try {
     const { id } = req.params;
-    const {
-      roundName,
-      interviewType,
-      interviewerId,
-      scheduledAt,
-      meetingLink,
-    } = req.body;
-
+    const { roundName, interviewType, interviewerId, scheduledAt, meetingLink } = req.body;
     if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid candidate ID" });
+    }
+    if (
+      typeof roundName !== "string" ||
+      !roundName.trim() ||
+      !interviewerId ||
+      !scheduledAt
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Invalid candidate ID",
+        message: "roundName, interviewerId, scheduledAt are required",
       });
     }
-
-    if (!roundName || !roundName.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Round name is required",
-      });
-    }
-
     if (!mongoose.Types.ObjectId.isValid(interviewerId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Select a valid interviewer",
-      });
+      return res.status(400).json({ success: false, message: "Select a valid interviewer" });
     }
-
     const scheduledDate = new Date(scheduledAt);
-    if (!scheduledAt || Number.isNaN(scheduledDate.getTime())) {
-      return res.status(400).json({
-        success: false,
-        message: "A valid interview date and time are required",
-      });
+    if (Number.isNaN(scheduledDate.getTime())) {
+      return res.status(400).json({ success: false, message: "A valid interview date and time are required" });
     }
-
-    const candidate = await Candidate.findById(id);
-
+    const candidate = await User.findOne({ _id: id, role: "candidate" });
     if (!candidate) {
+      return res.status(404).json({ success: false, message: "Candidate not found" });
+    }
+    const application = await Application.findOne({
+      candidateId: candidate._id,
+      status: { $in: ["applied", "interview"] },
+    }).sort({ createdAt: -1 });
+    if (!application) {
       return res.status(404).json({
         success: false,
-        message: "Candidate not found",
+        message: "No active application for this candidate",
       });
     }
-
     const interviewer = await User.findOne({
       _id: interviewerId,
       role: "interviewer",
-      isActive: { $ne: false },
+      isActive: true,
     }).select("_id name email");
     if (!interviewer) {
-      return res.status(400).json({
-        success: false,
-        message: "The selected interviewer is unavailable",
-      });
+      return res.status(404).json({ success: false, message: "Interviewer not found" });
     }
 
     const interview = await Interview.create({
       candidateId: candidate._id,
+      applicationId: application._id,
       roundName: roundName.trim(),
-      interviewType,
+      interviewType: interviewType || "technical",
       interviewerId: interviewer._id,
       scheduledAt: scheduledDate,
       meetingLink: meetingLink || "",
-    });
-
-    const assignedAt = new Date();
-    const previousCandidateStatus = candidate.status;
-    candidate.status = "interview";
-    candidate.interviews.push({
-      round: candidate.interviews.length + 1,
-      roundName: interview.roundName,
-      interviewType: interview.interviewType,
-      interviewRecordId: interview._id,
-      scheduledAt: scheduledDate,
-      meetingLink: interview.meetingLink,
-      interviewerId: interviewer._id,
       status: "scheduled",
+      assignedBy: req.user.id,
     });
 
     try {
-      await candidate.save();
-      await updateCandidateApplicationStage(candidate, assignedAt, scheduledDate, interview.meetingLink, interview.roundName);
-    } catch (error) {
-      candidate.status = previousCandidateStatus;
-      candidate.interviews.pull({ interviewRecordId: interview._id });
-      try {
-        await candidate.save();
-      } catch (rollbackError) {
-        console.error("Candidate interview assignment rollback error:", rollbackError.message);
+      application.currentInterviewId = interview._id;
+      if (application.status === "applied") {
+        application.status = "interview";
+        const interviewStage = application.timeline.find((stage) => stage.stage === "interview");
+        if (interviewStage) {
+          interviewStage.completed = true;
+          interviewStage.date = new Date();
+          interviewStage.title = "Interview Scheduled";
+          interviewStage.description = `${interview.roundName} scheduled for ${scheduledDate.toLocaleString()}.`;
+        }
       }
+      await application.save();
+    } catch (error) {
       try {
         await Interview.findByIdAndDelete(interview._id);
       } catch (rollbackError) {
@@ -225,6 +148,33 @@ const createInterview = async (req, res) => {
       throw error;
     }
 
+    const scheduledLabel = scheduledDate.toLocaleString();
+    await Promise.all([
+      notify({
+        userId: interviewer._id,
+        message: `New interview assigned: ${candidate.name} — ${interview.roundName} on ${scheduledLabel}`,
+        type: "info",
+        link: "/interviewer",
+      }),
+      notify({
+        userId: candidate._id,
+        message: `Your interview has been scheduled: ${interview.roundName} on ${scheduledLabel}`,
+        type: "info",
+        link: "/candidate",
+      }),
+    ]);
+    await recordAuditLog({
+      userId: req.user.id,
+      action: "create",
+      module: "interview",
+      entityId: interview._id,
+      newValue: {
+        candidateId: candidate._id,
+        interviewerId: interviewer._id,
+        scheduledAt: scheduledDate,
+      },
+    });
+
     return res.status(201).json({
       success: true,
       message: "Interview assigned successfully",
@@ -232,10 +182,9 @@ const createInterview = async (req, res) => {
     });
   } catch (error) {
     console.error("Create interview error:", error.message);
-
     return res.status(500).json({
       success: false,
-      message: "Failed to create interview",
+      message: error.message || "Failed to create interview",
     });
   }
 };
@@ -258,7 +207,9 @@ const getInterviewById = async (req, res) => {
     const interview = await Interview.findOne({
       _id: roundId,
       candidateId: id,
-    }).populate("interviewerId", "name firstName lastName email");
+    })
+      .populate("candidateId", "name email phone position")
+      .populate("interviewerId", "name email");
 
     if (!interview) {
       return res.status(404).json({
@@ -290,7 +241,6 @@ const updateInterview = async (req, res) => {
       "interviewType",
       "interviewerId",
       "scheduledAt",
-      "status",
       "meetingLink",
     ];
 
@@ -304,108 +254,80 @@ const updateInterview = async (req, res) => {
       });
     }
 
-    const updates = {};
-
-    for (const field of allowedFields) {
-      if (req.body[field] !== undefined) {
-        updates[field] = req.body[field];
-      }
+    const interview = await Interview.findOne({ _id: roundId, candidateId: id });
+    if (!interview) {
+      return res.status(404).json({ success: false, message: "Interview not found for this candidate" });
     }
 
+    const updates = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ success: false, message: "No valid fields provided for update" });
+    }
+    if (updates.roundName !== undefined) {
+      if (typeof updates.roundName !== "string" || !updates.roundName.trim()) {
+        return res.status(400).json({ success: false, message: "Round name is required" });
+      }
+      interview.roundName = updates.roundName.trim();
+    }
+    if (updates.interviewType !== undefined) interview.interviewType = updates.interviewType;
+    if (updates.meetingLink !== undefined) interview.meetingLink = updates.meetingLink;
+
+    let updatedInterviewer;
     if (updates.interviewerId !== undefined) {
       if (!mongoose.Types.ObjectId.isValid(updates.interviewerId)) {
-        return res.status(400).json({
-          success: false,
-          message: "Select a valid interviewer",
-        });
+        return res.status(400).json({ success: false, message: "Select a valid interviewer" });
       }
-
-      const interviewer = await User.findOne({
+      updatedInterviewer = await User.findOne({
         _id: updates.interviewerId,
         role: "interviewer",
         isActive: true,
-      }).select("_id");
-      if (!interviewer) {
-        return res.status(400).json({
-          success: false,
-          message: "The selected interviewer is unavailable",
-        });
+      }).select("_id name email");
+      if (!updatedInterviewer) {
+        return res.status(404).json({ success: false, message: "Interviewer not found" });
       }
+      interview.interviewerId = updatedInterviewer._id;
     }
 
+    let scheduleChanged = false;
     if (updates.scheduledAt !== undefined) {
       const scheduledDate = new Date(updates.scheduledAt);
       if (!updates.scheduledAt || Number.isNaN(scheduledDate.getTime())) {
-        return res.status(400).json({
-          success: false,
-          message: "A valid interview date and time are required",
-        });
+        return res.status(400).json({ success: false, message: "A valid interview date and time are required" });
       }
-      updates.scheduledAt = scheduledDate;
+      scheduleChanged = scheduledDate.getTime() !== new Date(interview.scheduledAt).getTime();
+      interview.scheduledAt = scheduledDate;
+      if (scheduleChanged) interview.status = "rescheduled";
     }
+    await interview.save();
 
-    if (updates.status !== undefined) {
-      updates.status = String(updates.status).toLowerCase();
+    if (scheduleChanged || updatedInterviewer) {
+      const candidate = await User.findById(interview.candidateId).select("name");
+      const notificationMessage = `Interview updated: ${interview.roundName} on ${interview.scheduledAt.toLocaleString()}`;
+      await Promise.all([
+        notify({
+          userId: interview.interviewerId,
+          message: `Interview assigned to you: ${candidate?.name || "Candidate"} — ${notificationMessage}`,
+          type: "info",
+          link: "/interviewer",
+        }),
+        notify({
+          userId: interview.candidateId,
+          message: `Your interview was updated: ${notificationMessage}`,
+          type: "info",
+          link: "/candidate",
+        }),
+      ]);
     }
-
-    if (Object.keys(updates).length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "No valid fields provided for update",
-      });
-    }
-
-    const interview = await Interview.findOneAndUpdate(
-      { _id: roundId, candidateId: id },
-      { $set: updates },
-      { returnDocument: 'after', runValidators: true }
-    );
-
-    if (!interview) {
-      return res.status(404).json({
-        success: false,
-        message: "Interview not found for this candidate",
-      });
-    }
-
-    const candidate = await Candidate.findById(id);
-    const assignedRound = candidate?.interviews.find(
-      (round) => String(round.interviewRecordId) === String(interview._id)
-    );
-    if (assignedRound) {
-      if (updates.roundName !== undefined) {
-        assignedRound.roundName = updates.roundName;
-      }
-      if (updates.interviewType !== undefined) {
-        assignedRound.interviewType = updates.interviewType;
-      }
-      if (updates.interviewerId !== undefined) {
-        assignedRound.interviewerId = updates.interviewerId;
-      }
-      if (updates.scheduledAt !== undefined) {
-        assignedRound.scheduledAt = updates.scheduledAt;
-      }
-      if (updates.meetingLink !== undefined) {
-        assignedRound.meetingLink = updates.meetingLink;
-      }
-      if (updates.status !== undefined) {
-        assignedRound.status = String(updates.status).toLowerCase();
-      }
-      await candidate.save();
-    } else if (interview.interviewerId && interview.scheduledAt && candidate) {
-      candidate.status = "interview";
-      candidate.interviews.push({
-        round: candidate.interviews.length + 1,
-        roundName: interview.roundName,
-        interviewType: interview.interviewType,
-        interviewRecordId: interview._id,
-        scheduledAt: interview.scheduledAt,
-        meetingLink: interview.meetingLink,
-        interviewerId: interview.interviewerId,
-        status: interview.status,
-      });
-      await candidate.save();
-    }
+    await recordAuditLog({
+      userId: req.user.id,
+      action: "update",
+      module: "interview",
+      entityId: interview._id,
+      newValue: updates,
+    });
 
     return res.status(200).json({
       success: true,
@@ -414,10 +336,9 @@ const updateInterview = async (req, res) => {
     });
   } catch (error) {
     console.error("Update interview error:", error.message);
-
     return res.status(500).json({
       success: false,
-      message: "Failed to update interview",
+      message: error.message || "Failed to update interview",
     });
   }
 };
@@ -437,7 +358,7 @@ const deleteInterview = async (req, res) => {
       });
     }
 
-    const interview = await Interview.findOneAndDelete({
+    const interview = await Interview.findOne({
       _id: roundId,
       candidateId: id,
     });
@@ -448,41 +369,61 @@ const deleteInterview = async (req, res) => {
         message: "Interview not found for this candidate",
       });
     }
-
-    const candidate = await Candidate.findById(id);
-    if (candidate) {
-      candidate.interviews.pull({ interviewRecordId: interview._id });
-
-      const remainingInterview = await Interview.exists({ candidateId: id });
-      if (!remainingInterview && String(candidate.status).toLowerCase() === "interview") {
-        candidate.status = "applied";
-      }
-
-      await candidate.save();
-
-      if (!remainingInterview) {
-        let application = await Application.findOne({
-          candidateId: candidate._id,
-          position: candidate.position,
-        }).sort({ appliedAt: -1 });
-
-        if (!application) {
-          application = await Application.findOne({ candidateId: candidate._id })
-            .sort({ appliedAt: -1 });
-        }
-
-        if (application && String(application.status).toLowerCase() === "interview") {
-          application.status = "Applied";
-          for (const event of application.timeline) {
-            if (String(event.stage || "").trim().toLowerCase() === "interview") {
-              event.completed = false;
-              event.date = null;
-            }
-          }
-          await application.save();
-        }
-      }
+    if (interview.status !== "scheduled") {
+      return res.status(409).json({
+        success: false,
+        message: "Only scheduled interviews can be deleted",
+      });
     }
+
+    await interview.deleteOne();
+
+    const remainingInterview = await Interview.findOne({
+      candidateId: id,
+      applicationId: interview.applicationId,
+      status: { $in: ["scheduled", "completed"] },
+    }).sort({ scheduledAt: -1 });
+    const application = await Application.findById(interview.applicationId);
+    if (application) {
+      if (String(application.currentInterviewId || "") === String(interview._id)) {
+        application.currentInterviewId = remainingInterview?._id || null;
+      }
+      if (!remainingInterview && application.status === "interview") {
+        application.status = "applied";
+        const stage = application.timeline.find((entry) => entry.stage === "interview");
+        if (stage) {
+          stage.completed = false;
+          stage.date = null;
+          stage.description = "";
+        }
+      }
+      await application.save();
+    }
+    await Promise.all([
+      notify({
+        userId: interview.interviewerId,
+        message: `Interview assignment removed: ${interview.roundName}.`,
+        type: "info",
+        link: "/interviewer",
+      }),
+      notify({
+        userId: interview.candidateId,
+        message: `Your interview has been cancelled: ${interview.roundName}.`,
+        type: "info",
+        link: "/candidate",
+      }),
+    ]);
+    await recordAuditLog({
+      userId: req.user.id,
+      action: "delete",
+      module: "interview",
+      entityId: interview._id,
+      oldValue: {
+        candidateId: interview.candidateId,
+        interviewerId: interview.interviewerId,
+        scheduledAt: interview.scheduledAt,
+      },
+    });
 
     return res.status(200).json({
       success: true,
@@ -504,19 +445,25 @@ const deleteInterview = async (req, res) => {
 // GET all interviews
 const getAllInterviews = async (req, res) => {
   try {
-    const { status } = req.query;
+    const { status, interviewerId } = req.query;
     const filter = {};
     if (status) {
-      filter.status = new RegExp(`^${status}$`, "i");
+      const normalizedStatus = String(status).toLowerCase();
+      if (!["scheduled", "completed", "cancelled", "rescheduled"].includes(normalizedStatus)) {
+        return res.status(400).json({ success: false, message: "Invalid interview status" });
+      }
+      filter.status = normalizedStatus;
+    }
+    if (interviewerId) {
+      if (!mongoose.Types.ObjectId.isValid(interviewerId)) {
+        return res.status(400).json({ success: false, message: "Invalid interviewer ID" });
+      }
+      filter.interviewerId = interviewerId;
     }
 
     const interviews = await Interview.find(filter)
-      .populate(
-        "candidateId",
-        "name firstName lastName email phone position jobType status department source applicationSource resumeUrl resumeOriginalName"
-      )
-      .populate("interviewerId", "name firstName lastName email")
-      .sort({ scheduledAt: 1, createdAt: -1 });
+      .populate("candidateId interviewerId", "name email")
+      .sort({ scheduledAt: -1 });
 
     return res.status(200).json({
       success: true,

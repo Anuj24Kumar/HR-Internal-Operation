@@ -18,6 +18,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { apiRequest } from "../api";
+import { useAlert } from "../components/AlertProvider.jsx";
 
 const initialTask = {
   title: "",
@@ -26,7 +27,11 @@ const initialTask = {
   dueDate: "",
 };
 
-const statusOptions = ["Pending", "In Progress", "Completed"];
+const statusOptions = [
+  { value: "pending", label: "Pending" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "completed", label: "Completed" },
+];
 
 const getEmployeeName = (employee) => {
   if (!employee) return "Employee";
@@ -130,6 +135,7 @@ const inputStyle =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50";
 
 export default function Onboarding() {
+  const alert = useAlert();
   const [records, setRecords] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -349,9 +355,13 @@ export default function Onboarding() {
   };
 
   const deleteTask = async (record, task) => {
-    if (!window.confirm(`Are you sure you want to delete "${task.title}"?`)) {
-      return;
-    }
+    const confirmed = await alert.confirm({
+      title: "Delete onboarding task?",
+      message: `Are you sure you want to delete "${task.title}"?`,
+      type: "danger",
+      confirmText: "Delete",
+    });
+    if (!confirmed) return;
 
     setDeletingTaskId(task._id);
     setError("");
@@ -605,7 +615,7 @@ export default function Onboarding() {
                   const employee = record.employeeId || {};
                   const tasks = record.tasks || [];
                   const completedTasks = tasks.filter(
-                    (task) => task.status === "Completed"
+                    (task) => task.status === "completed"
                   ).length;
                   const status = getProgressStatus(record.progress);
 
@@ -883,7 +893,7 @@ export default function Onboarding() {
                 </h3>
                 <p className="mt-1 text-xs text-slate-500">
                   {selectedRecord.tasks?.filter(
-                    (task) => task.status === "Completed"
+                    (task) => task.status === "completed"
                   ).length || 0}{" "}
                   of {selectedRecord.tasks?.length || 0} completed
                 </p>
@@ -912,12 +922,12 @@ export default function Onboarding() {
                     <div className="flex min-w-0 items-start gap-3">
                       <div
                         className={`mt-0.5 ${
-                          task.status === "Completed"
+                          task.status === "completed"
                             ? "text-emerald-600"
                             : "text-slate-300"
                         }`}
                       >
-                        {task.status === "Completed" ? (
+                        {task.status === "completed" ? (
                           <CircleCheck size={19} />
                         ) : (
                           <Circle size={19} />
@@ -963,8 +973,8 @@ export default function Onboarding() {
                         className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 outline-none focus:border-indigo-400"
                       >
                         {statusOptions.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
+                          <option key={status.value} value={status.value}>
+                            {status.label}
                           </option>
                         ))}
                       </select>

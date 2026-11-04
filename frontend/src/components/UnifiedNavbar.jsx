@@ -1,26 +1,64 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Bell, User, LogOut, Menu, Check } from "lucide-react";
+import { apiRequest } from "../api.js";
+
+function relativeTime(value) {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return "";
+
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return "Just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86400)}d ago`;
+}
+
+function notificationTitle(type) {
+  return String(type || "info")
+    .replace(/[_-]/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 export default function UnifiedNavbar({
   user,
   roleLabel = "User",
   onViewProfile,
   onLogout,
-  notifications = [],
   onToggleMobile,
   leftContent,
 }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [activeNotifications, setActiveNotifications] = useState(notifications);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationError, setNotificationError] = useState("");
 
   const profileRef = useRef(null);
   const notifRef = useRef(null);
+  const showNotifications =
+    roleLabel.toLowerCase() !== "admin" && user?.role !== "admin";
 
-  // Sync notifications if prop changes
+  const loadNotifications = useCallback(async () => {
+    try {
+      const result = await apiRequest("/notifications");
+      setNotifications(result.data?.notifications || []);
+      setUnreadCount(Number(result.data?.unreadCount) || 0);
+      setNotificationError("");
+    } catch (error) {
+      console.error("Unable to load notifications:", error.message);
+      setNotificationError("Unable to load notifications.");
+    }
+  }, []);
+
   useEffect(() => {
-    setActiveNotifications(notifications);
-  }, [notifications]);
+    if (!showNotifications || !localStorage.getItem("hr-auth-token")) {
+      return undefined;
+    }
+
+    loadNotifications();
+    const intervalId = window.setInterval(loadNotifications, 30000);
+    return () => window.clearInterval(intervalId);
+  }, [loadNotifications, showNotifications]);
 
   // Click outside listener
   useEffect(() => {
@@ -49,7 +87,28 @@ export default function UnifiedNavbar({
       .map((part) => part[0].toUpperCase())
       .join("") || roleLabel.slice(0, 2).toUpperCase();
 
-  const unreadCount = activeNotifications.length;
+  async function markAsRead(notification) {
+    const id = notification._id || notification.id;
+    if (!id || notification.isRead) return;
+
+    try {
+      await apiRequest(`/notifications/${id}/read`, { method: "PATCH" });
+      await loadNotifications();
+    } catch (error) {
+      console.error("Unable to mark notification as read:", error.message);
+      setNotificationError("Unable to update this notification.");
+    }
+  }
+
+  async function markAllAsRead() {
+    try {
+      await apiRequest("/notifications/read-all", { method: "PATCH" });
+      await loadNotifications();
+    } catch (error) {
+      console.error("Unable to mark notifications as read:", error.message);
+      setNotificationError("Unable to update notifications.");
+    }
+  }
 
   return (
     <header className="sticky top-0 z-30 flex h-[70px] shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
@@ -80,6 +139,7 @@ export default function UnifiedNavbar({
       {/* Right side: Notification icon & Profile icon in circle */}
       <div className="flex items-center gap-3">
         {/* Notification Icon */}
+        {showNotifications && (
         <div className="relative" ref={notifRef}>
           <button
             type="button"
@@ -92,9 +152,8 @@ export default function UnifiedNavbar({
           >
             <Bell size={19} />
             {unreadCount > 0 && (
-              <span className="absolute top-2 right-2 flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-600" />
+              <span className="absolute -right-0.5 -top-0.5 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-bold leading-none text-white">
+                {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
           </button>
@@ -113,38 +172,78 @@ export default function UnifiedNavbar({
                     </span>
                   )}
                 </div>
-                {unreadCount > 0 && (
+              </div>
+
+              <div className="max-h-64 overflow-y-auto space-y-1.5 py-1">
+                {notificationError ? (
+                  <p className="px-2 py-4 text-center text-xs text-rose-600">
+                    {notificationError}
+                  </p>
+                ) : notifications.length > 0 ? (
+                  notifications.slice(0, 10).map((notification, index) => {
+                    const item = (
+                      <>
+                        <p className="font-semibold text-slate-900">
+                          {notificationTitle(notification.type)}
+                        </p>
+                        <p className="mt-0.5 text-slate-600">{notification.message}</p>
+                        <p className="mt-1 text-[10px] text-slate-400">
+                          {relativeTime(notification.createdAt)}
+                        </p>
+                      </>
+                    );
+                    const className = `block rounded-lg border p-2.5 text-xs text-slate-700 ${
+                      notification.isRead
+                        ? "border-slate-100 bg-slate-50"
+                        : "border-blue-100 bg-blue-50/60"
+                    }`;
+
+                    return (
+                      <div key={notification._id || notification.id || index} className="relative">
+                        {notification.link ? (
+                          <a
+                            href={notification.link}
+                            className={`${className} pr-16 hover:bg-slate-100`}
+                          >
+                            {item}
+                          </a>
+                        ) : (
+                          <div className={`${className} pr-16`}>{item}</div>
+                        )}
+                        {!notification.isRead && (
+                          <button
+                            type="button"
+                            onClick={() => markAsRead(notification)}
+                            className="absolute right-2 top-2 text-[10px] font-medium text-blue-600 hover:underline"
+                          >
+                            Mark read
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="py-6 text-center text-xs text-slate-400">
+                    No notifications
+                  </div>
+                )}
+              </div>
+              {unreadCount > 0 && (
+                <div className="mt-2 border-t border-slate-100 pt-2">
                   <button
                     type="button"
-                    onClick={() => setActiveNotifications([])}
-                    className="text-[11px] font-medium text-blue-600 hover:underline flex items-center gap-1"
+                    onClick={markAllAsRead}
+                    className="flex w-full items-center justify-center gap-1 py-1 text-[11px] font-medium text-blue-600 hover:underline"
                   >
                     <Check size={12} />
                     Mark all read
                   </button>
-                )}
-              </div>
-
-              <div className="max-h-64 overflow-y-auto space-y-1.5 py-1">
-                {activeNotifications.length > 0 ? (
-                  activeNotifications.map((notif, index) => (
-                    <div
-                      key={notif.id || index}
-                      className="rounded-lg p-2.5 text-xs text-slate-700 bg-slate-50 border border-slate-100"
-                    >
-                      <p className="font-semibold text-slate-900">{notif.title || "Update"}</p>
-                      <p className="mt-0.5 text-slate-500">{notif.message || notif.text || notif}</p>
-                    </div>
-                  ))
-                ) : (
-                  <div className="py-6 text-center text-xs text-slate-400">
-                    No new notifications
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
         </div>
+        )}
 
         {/* Profile Icon in Circle */}
         <div className="relative" ref={profileRef}>

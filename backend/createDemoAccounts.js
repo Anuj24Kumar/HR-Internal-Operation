@@ -1,127 +1,129 @@
-const path = require("path");
-const fs = require("fs");
-
-// Ensure node can resolve modules from backend/node_modules when executed from project root
-const backendModules = path.join(__dirname, "backend/node_modules");
-if (fs.existsSync(backendModules)) {
-  module.paths.push(backendModules);
-}
-const localModules = path.join(__dirname, "node_modules");
-if (fs.existsSync(localModules)) {
-  module.paths.push(localModules);
-}
-
-// Support running from root directory or from inside backend folder
-const envPath = fs.existsSync(path.join(__dirname, "backend/.env"))
-  ? path.join(__dirname, "backend/.env")
-  : fs.existsSync(path.join(__dirname, ".env"))
-  ? path.join(__dirname, ".env")
-  : null;
-
-if (envPath) {
-  require("dotenv").config({ path: envPath });
-} else {
-  require("dotenv").config();
-}
+require("dotenv").config({ path: require("path").resolve(__dirname, ".env") });
 
 const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
+const { User, Application } = require("./models");
 
-// Models
-const backendDir = fs.existsSync(path.join(__dirname, "backend/models"))
-  ? path.join(__dirname, "backend")
-  : __dirname;
-
-const User = require(path.join(backendDir, "models/User"));
-const Application = require(path.join(backendDir, "models/Application"));
-
-const DEMO_ACCOUNTS = [
+const demoAccounts = [
   {
     role: "admin",
-    label: "Admin",
+    name: "System Admin",
     email: "admin@company.com",
     password: "Admin@12345",
-    name: "System Admin",
-    firstName: "System",
-    lastName: "Admin",
     department: "Administration",
     phone: "+1 555-0101",
-    icon: "👑",
   },
   {
     role: "hr",
-    label: "HR",
+    name: "HR Operations",
     email: "hr@company.com",
     password: "HR@12345",
-    name: "HR Operations",
-    firstName: "HR",
-    lastName: "Operations",
     department: "Human Resources",
     phone: "+1 555-0102",
-    icon: "💼",
   },
   {
     role: "hiring_manager",
-    label: "Hiring Manager",
+    name: "Alex Rivera",
     email: "manager@company.com",
     password: "Manager@123",
-    name: "Alex Rivera",
-    firstName: "Alex",
-    lastName: "Rivera",
     department: "Engineering",
     phone: "+1 555-0103",
-    icon: "👔",
   },
   {
     role: "interviewer",
-    label: "Interviewer",
+    name: "Sarah Chen",
     email: "interviewer@company.com",
     password: "Interviewer@123",
-    name: "Sarah Chen",
-    firstName: "Sarah",
-    lastName: "Chen",
     department: "Engineering",
     phone: "+1 555-0104",
-    icon: "📋",
   },
   {
     role: "employee",
-    label: "Employee",
+    name: "David Miller",
     email: "employee@company.com",
     password: "Employee@123",
-    name: "David Miller",
-    firstName: "David",
-    lastName: "Miller",
     department: "Engineering",
-    position: "Senior Full Stack Engineer",
+    designation: "Senior Full Stack Engineer",
     phone: "+1 555-0105",
-    icon: "👤",
+    employmentType: "full_time",
+    salary: { ctc: 120000 },
+    joiningDate: new Date("2023-06-01T00:00:00.000Z"),
+    location: "Bengaluru",
+    empId: "DEMO-EMP-001",
+    employeeCode: "DEMO-EMP-001",
   },
   {
     role: "intern",
-    label: "Intern",
+    name: "Emily Watson",
     email: "intern@company.com",
     password: "Intern@123",
-    name: "Emily Watson",
-    firstName: "Emily",
-    lastName: "Watson",
     department: "Engineering",
-    position: "Software Engineer Intern",
+    designation: "Software Engineer Intern",
     phone: "+1 555-0106",
-    icon: "🎓",
+    employmentType: "intern",
+    domain: "Software Engineering",
+    track: "Backend",
+    stipend: 25000,
+    startDate: new Date("2026-06-01T00:00:00.000Z"),
+    endDate: new Date("2026-12-01T00:00:00.000Z"),
+    joiningDate: new Date("2026-06-01T00:00:00.000Z"),
+    location: "Bengaluru",
   },
   {
     role: "candidate",
-    label: "Candidate",
+    name: "John Doe",
     email: "candidate@company.com",
     password: "Candidate@123",
-    name: "John Doe",
-    firstName: "John",
-    lastName: "Doe",
+    department: "Engineering",
+    position: "Software Engineer",
     phone: "+1 555-0107",
-    icon: "📄",
   },
 ];
+
+function splitName(name) {
+  const [firstName, ...lastNameParts] = name.trim().split(/\s+/);
+  return { firstName, lastName: lastNameParts.join(" ") };
+}
+
+async function saveSeedUser(account) {
+  const email = account.email.trim().toLowerCase();
+  const user = (await User.findOne({ email })) || new User();
+  const { firstName, lastName } = splitName(account.name);
+
+  Object.assign(user, {
+    ...account,
+    ...{ password: account.password },
+    email,
+    firstName,
+    lastName,
+    isActive: true,
+    status: "active",
+    isEmailVerified: true,
+    passwordResetRequired: false,
+  });
+
+  await user.save();
+  return user;
+}
+
+async function ensureCandidateApplication(candidate) {
+  const application = await Application.findOne({
+    candidateId: candidate._id,
+    position: candidate.position,
+  });
+  if (application) return application;
+
+  return Application.create({
+    candidateId: candidate._id,
+    candidateName: candidate.name,
+    email: candidate.email,
+    phone: candidate.phone,
+    position: candidate.position,
+    jobType: "full_time",
+    resumeUrl: candidate.resumeUrl,
+    status: "applied",
+    source: "demo_seed",
+  });
+}
 
 async function createDemoAccounts() {
   const mongoURI =
@@ -129,81 +131,37 @@ async function createDemoAccounts() {
     process.env.MONGODB_URI ||
     "mongodb://127.0.0.1:27017/hr_platform";
 
-  console.log("Connecting to MongoDB:", mongoURI);
-  await mongoose.connect(mongoURI, { autoIndex: true });
-  console.log("Connected successfully.\n");
+  try {
+    await mongoose.connect(mongoURI, { autoIndex: true });
 
-  console.log("==========================================================================");
-  console.log(" CREATING / UPDATING ONLY 7 DEMO ROLE ACCOUNTS (NO CANDIDATE AS APPLIED)");
-  console.log("==========================================================================\n");
-
-  const results = [];
-
-  for (const account of DEMO_ACCOUNTS) {
-    const hashedPassword = await bcrypt.hash(account.password, 10);
-    const normalizedEmail = account.email.trim().toLowerCase();
-
-    // 1. Create or update User document only
-    let user = await User.findOne({ email: normalizedEmail });
-
-    const userData = {
-      name: account.name,
-      firstName: account.firstName,
-      lastName: account.lastName,
-      email: normalizedEmail,
-      password: hashedPassword,
-      passwordHash: hashedPassword,
-      role: account.role,
-      department: account.department || "General",
-      position: account.position || "",
-      phone: account.phone || "",
-      isActive: true,
-      status: "active",
-      isEmailVerified: true,
-    };
-
-    // For candidate: keep completely unapplied
-    if (account.role === "candidate") {
-      userData.position = "";
-      userData.interviews = [];
-      userData.hiringRecommendation = { status: null, comments: null };
-      userData.selectedAs = null;
+    const users = [];
+    for (const account of demoAccounts) {
+      users.push(await saveSeedUser(account));
     }
 
-    if (user) {
-      Object.assign(user, userData);
-      await user.save();
-    } else {
-      user = await User.create(userData);
-    }
+    const candidate = users.find((user) => user.role === "candidate");
+    await ensureCandidateApplication(candidate);
 
-    // Clean up any old dummy applications so candidate is NOT pre-applied
-    if (account.role === "candidate") {
-      await Application.deleteMany({
-        $or: [{ candidateId: user._id }, { email: normalizedEmail }],
-      });
+    console.log("Created or updated the seven demo role accounts:");
+    console.table(
+      users.map(({ role, name, email }) => ({ role, name, email }))
+    );
+    console.log(
+      "The candidate has an applied full-time application for HR workflow testing."
+    );
+    console.log("Demo passwords are defined in backend/createDemoAccounts.js.");
+  } finally {
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.disconnect();
     }
-
-    results.push({
-      Role: `${account.icon} ${account.label}`,
-      Email: account.email,
-      Password: account.password,
-      Status: "Active User Account Ready",
-    });
   }
-
-  console.table(results);
-
-  console.log("\nAll 7 demo role accounts are now created as fresh active user accounts.");
-  console.log("Candidate account has no pre-existing applied jobs, ready for application testing!");
-  console.log("Quick Sign-In is ready at http://localhost:5173\n");
-
-  await mongoose.disconnect();
-  console.log("MongoDB connection closed.");
-  process.exit(0);
 }
 
-createDemoAccounts().catch((err) => {
-  console.error("Failed to create demo accounts:", err);
-  process.exit(1);
-});
+if (require.main === module) {
+  createDemoAccounts().catch((error) => {
+    console.error("Failed to create demo accounts:", error);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = createDemoAccounts;

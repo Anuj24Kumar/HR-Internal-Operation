@@ -17,15 +17,16 @@ import {
   Download,
 } from "lucide-react";
 import { apiRequest } from "../api";
+import { useAlert } from "../components/AlertProvider.jsx";
 
 const DEPARTMENTS = ["it", "finance", "manager", "hr"];
 
 const STATUS_OPTIONS = [
   "All Status",
-  "Pending Approval",
-  "Approved",
-  "Rejected",
-  "Completed",
+  "pending_approval",
+  "approved",
+  "rejected",
+  "completed",
 ];
 
 const getEmployeeName = (employee) =>
@@ -49,17 +50,20 @@ const formatDate = (date) => {
 
 const getStatusStyle = (status) => {
   const styles = {
-    "Pending Approval": "bg-amber-50 text-amber-700 border-amber-200",
-    Approved: "bg-blue-50 text-blue-700 border-blue-200",
-    Rejected: "bg-red-50 text-red-700 border-red-200",
-    Completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    pending_approval: "bg-amber-50 text-amber-700 border-amber-200",
+    approved: "bg-blue-50 text-blue-700 border-blue-200",
+    rejected: "bg-red-50 text-red-700 border-red-200",
+    completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
   };
 
   return styles[status] || "bg-gray-100 text-gray-600 border-gray-200";
 };
 
 const getClearanceStatus = (exit, department) =>
-  exit?.clearance?.[department]?.status || "Pending";
+  exit?.clearance?.[department]?.status || "pending";
+
+const formatStatus = (status) =>
+  String(status || "unknown").replace(/_/g, " ");
 
 const getLetterHref = (url) => {
   if (!url) return "";
@@ -74,6 +78,7 @@ const getLetterHref = (url) => {
 };
 
 export default function ExitManagement() {
+  const alert = useAlert();
   const [exits, setExits] = useState([]);
   const [employees, setEmployees] = useState([]);
 
@@ -154,9 +159,9 @@ export default function ExitManagement() {
   const stats = useMemo(() => {
     return {
       total: exits.length,
-      pending: exits.filter((e) => e.status === "Pending Approval").length,
-      approved: exits.filter((e) => e.status === "Approved").length,
-      completed: exits.filter((e) => e.status === "Completed").length,
+      pending: exits.filter((e) => e.status === "pending_approval").length,
+      approved: exits.filter((e) => e.status === "approved").length,
+      completed: exits.filter((e) => e.status === "completed").length,
     };
   }, [exits]);
 
@@ -216,10 +221,18 @@ export default function ExitManagement() {
   };
 
   const handleApproval = async (exitId, action) => {
-    const comments =
-      action === "rejected"
-        ? window.prompt("Enter reason for rejection:")
-        : window.prompt("Enter approval comments (optional):") || "";
+    const comments = await alert.prompt({
+      title: action === "rejected" ? "Rejection reason" : "Approval comments",
+      message:
+        action === "rejected"
+          ? "Enter the reason for rejecting this exit request."
+          : "Enter approval comments (optional).",
+      placeholder:
+        action === "rejected" ? "Reason for rejection" : "Optional comments",
+      confirmText: action === "rejected" ? "Reject request" : "Approve request",
+      multiline: true,
+      required: action === "rejected",
+    });
 
     if (action === "rejected" && !comments?.trim()) {
       return;
@@ -260,9 +273,12 @@ export default function ExitManagement() {
   };
 
   const handleClearance = async (exitId, department) => {
-    const confirmClearance = window.confirm(
-      `Mark ${department.toUpperCase()} clearance as completed?`
-    );
+    const confirmClearance = await alert.confirm({
+      title: "Complete clearance?",
+      message: `Mark ${department.toUpperCase()} clearance as completed?`,
+      type: "warning",
+      confirmText: "Complete clearance",
+    });
 
     if (!confirmClearance) return;
 
@@ -314,9 +330,12 @@ export default function ExitManagement() {
   };
 
   const handleCompleteExit = async (exitId) => {
-    const confirmComplete = window.confirm(
-      "Complete employee exit? Employee status will be changed to Exited."
-    );
+    const confirmComplete = await alert.confirm({
+      title: "Complete employee exit?",
+      message: "Employee status will be changed to Exited.",
+      type: "danger",
+      confirmText: "Complete exit",
+    });
 
     if (!confirmComplete) return;
 
@@ -345,11 +364,11 @@ export default function ExitManagement() {
   const allClearancesCompleted = (exit) =>
     DEPARTMENTS.every(
       (department) =>
-        getClearanceStatus(exit, department) === "Completed"
+        getClearanceStatus(exit, department) === "completed"
     );
 
   const renderClearanceBadge = (status) => {
-    const completed = status === "Completed";
+    const completed = status === "completed";
 
     return (
       <span
@@ -364,7 +383,7 @@ export default function ExitManagement() {
         ) : (
           <Clock size={13} />
         )}
-        {status}
+        {formatStatus(status)}
       </span>
     );
   };
@@ -602,7 +621,7 @@ export default function ExitManagement() {
                             exit.status
                           )}`}
                         >
-                          {exit.status}
+                          {formatStatus(exit.status)}
                         </span>
                       </td>
 
@@ -616,7 +635,7 @@ export default function ExitManagement() {
                             <Eye size={16} />
                           </button>
 
-                          {exit.status === "Pending Approval" && (
+                          {exit.status === "pending_approval" && (
                             <>
                               <button
                                 onClick={() =>
@@ -686,7 +705,7 @@ export default function ExitManagement() {
                 </option>
 
                 {employees
-                  .filter((employee) => employee.status !== "Exited")
+                  .filter((employee) => employee.status !== "inactive")
                   .map((employee) => (
                     <option key={employee._id} value={employee._id}>
                       {getEmployeeName(employee)} (
@@ -799,7 +818,7 @@ export default function ExitManagement() {
                     selectedExit.status
                   )}`}
                 >
-                  {selectedExit.status}
+                  {formatStatus(selectedExit.status)}
                 </span>
               </div>
 
@@ -829,7 +848,7 @@ export default function ExitManagement() {
             </div>
 
             {/* Approval */}
-            {selectedExit.status === "Pending Approval" && (
+            {selectedExit.status === "pending_approval" && (
               <div className="flex flex-wrap gap-3">
                 <button
                   disabled={actionLoading}
@@ -873,7 +892,7 @@ export default function ExitManagement() {
                     department
                   );
 
-                  const completed = status === "Completed";
+                  const completed = status === "completed";
 
                   return (
                     <div
@@ -919,7 +938,7 @@ export default function ExitManagement() {
 
                       {renderClearanceBadge(status)}
 
-                      {selectedExit.status === "Approved" &&
+                      {selectedExit.status === "approved" &&
                         !completed && (
                           <button
                             disabled={actionLoading}
@@ -993,7 +1012,7 @@ export default function ExitManagement() {
                     <button
                       disabled={
                         actionLoading ||
-                        selectedExit.status !== "Approved" ||
+                        selectedExit.status !== "approved" ||
                         !allClearancesCompleted(selectedExit)
                       }
                       onClick={() =>
@@ -1009,7 +1028,7 @@ export default function ExitManagement() {
             </div>
 
             {/* Complete exit */}
-            {selectedExit.status === "Approved" && (
+            {selectedExit.status === "approved" && (
               <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="font-semibold text-emerald-800">

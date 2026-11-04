@@ -1,4 +1,3 @@
-const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { User, Workflow, LetterTemplate } = require("../models");
 
@@ -12,16 +11,21 @@ const getJwtSecret = () => {
 const registerUser = async (req, res) => {
   let createdUser;
   try {
-    const { firstName, lastName, email, password, phone } = req.body;
+    const { name, firstName, lastName, email, password, phone } = req.body;
+    const fullName = typeof name === "string" && name.trim()
+      ? name.trim()
+      : [firstName, lastName]
+          .filter((part) => typeof part === "string" && part.trim())
+          .map((part) => part.trim())
+          .join(" ");
     if (
-      typeof firstName !== "string" || !firstName.trim() ||
-      typeof lastName !== "string" || !lastName.trim() ||
+      !fullName ||
       typeof email !== "string" || !email.trim() ||
       typeof password !== "string" || !password
     ) {
       return res.status(400).json({
         success: false,
-        message: "First name, last name, email, and password are required",
+        message: "Name, email, and password are required",
       });
     }
     if (password.length < 8) {
@@ -39,36 +43,35 @@ const registerUser = async (req, res) => {
       });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12);
-
     // Store ONLY once in the single users collection
     createdUser = await User.create({
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      name: `${firstName.trim()} ${lastName.trim()}`,
+      firstName: typeof firstName === "string" && firstName.trim()
+        ? firstName.trim()
+        : fullName.split(/\s+/)[0],
+      lastName: typeof lastName === "string" && lastName.trim()
+        ? lastName.trim()
+        : fullName.split(/\s+/).slice(1).join(" "),
+      name: fullName,
       email: normalizedEmail,
-      password: hashedPassword,
-      passwordHash: hashedPassword,
+      password,
       phone: typeof phone === "string" ? phone.trim() : "",
       role: "candidate",
       isActive: true,
       status: "active",
     });
 
+    const token = jwt.sign(
+      { userId: createdUser._id.toString(), role: createdUser.role },
+      getJwtSecret(),
+      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+    );
+    const userDetails = createdUser.toJSON();
     return res.status(201).json({
       success: true,
       message: "User registered successfully",
-      user: {
-        id: createdUser._id,
-        firstName: createdUser.firstName,
-        lastName: createdUser.lastName,
-        name: createdUser.name,
-        email: createdUser.email,
-        phone: createdUser.phone,
-        role: createdUser.role,
-        status: createdUser.status,
-        createdAt: createdUser.createdAt,
-      },
+      token,
+      user: userDetails,
+      data: { user: userDetails, token },
     });
   } catch (error) {
     if (createdUser?._id) {
@@ -107,20 +110,23 @@ const loginUser = async (req, res) => {
     // Query exclusively from the users collection
     let user = await User.findOne({
       email: normalizedEmail,
-      $or: [
-        { password: { $exists: true, $ne: "" } },
-        { passwordHash: { $exists: true, $ne: "" } },
-      ],
-    }).select("+password +passwordHash");
+    }).select("+password");
 
     if (!user) {
-      user = await User.findOne({ email: normalizedEmail }).select("+password +passwordHash");
+      user = await User.findOne({ email: normalizedEmail }).select("+password");
     }
 
     if (!user) {
       return res.status(401).json({
         success: false,
         message: "Invalid email or password",
+      });
+    }
+
+    if (user.passwordResetRequired) {
+      return res.status(403).json({
+        success: false,
+        message: "Password reset is required before this account can sign in",
       });
     }
 
@@ -131,15 +137,6 @@ const loginUser = async (req, res) => {
         success: false,
         message: "Invalid email or password",
       });
-    }
-
-    // Auto-heal active candidate accounts if they were marked inactive by past application status changes
-    if (["candidate", "intern", "employee"].includes(user.role) && user.status !== "suspended" && user.status !== "inactive") {
-      if (!user.isActive || user.status !== "active") {
-        user.isActive = true;
-        user.status = "active";
-        await user.save();
-      }
     }
 
     // Check account status
@@ -215,18 +212,29 @@ const getMe = async (req, res) => {
   }
 };
 
+const logoutUser = async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.user.id, { $set: { lastLogout: new Date() } });
+    return res.status(200).json({
+      success: true,
+      message: "Logged out successfully",
+    });
+  } catch (error) {
+    console.error("Logout error:", error.message);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 const seedInitialData = async (req, res) => {
   try {
     let admin = await User.findOne({ role: "admin" });
     let created = false;
     if (!admin) {
-      const hashedPassword = await bcrypt.hash("admin123", 10);
       admin = await User.create({
         name: "Admin",
         firstName: "Admin",
         email: "admin@hrplatform.com",
-        password: hashedPassword,
-        passwordHash: hashedPassword,
+        password: "admin123",
         role: "admin",
         isActive: true,
         status: "active",
@@ -291,6 +299,7 @@ module.exports = {
   loginUser,
   login: loginUser,
   getMe,
+  logoutUser,
   getAdminData,
   seedInitialData,
 };

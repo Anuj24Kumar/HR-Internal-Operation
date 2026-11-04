@@ -4,7 +4,7 @@ const onboardingTaskSchema = new mongoose.Schema(
   {
     intern: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Intern",
+      ref: "User",
       required: true,
       index: true,
     },

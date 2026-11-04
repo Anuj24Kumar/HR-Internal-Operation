@@ -1,9 +1,5 @@
 
-const Candidate = require("../models/Candidate");
-const Employee = require("../models/Employee");
-const Offer = require("../models/Offer");
-const ApprovalRequest = require("../models/ApprovalRequest");
-const Onboarding = require("../models/Onboarding");
+const { User, Application, Offer, ApprovalRequest, Onboarding } = require("../models");
 
 const ExcelJS = require("exceljs");
 
@@ -22,9 +18,9 @@ const getHRDashboard = async (req, res) => {
       candidateStages,
       offerCounts,
     ] = await Promise.all([
-      Candidate.countDocuments(),
-      Employee.countDocuments(),
-      ApprovalRequest.countDocuments({ status: "Pending" }),
+      Application.distinct("candidateId").then((ids) => ids.length),
+      User.countDocuments({ role: { $in: ["employee", "intern"] } }),
+      ApprovalRequest.countDocuments({ status: "pending" }),
       Onboarding.countDocuments({
         "tasks.0": { $exists: true },
         $expr: {
@@ -34,7 +30,7 @@ const getHRDashboard = async (req, res) => {
                 $filter: {
                   input: "$tasks",
                   as: "task",
-                  cond: { $ne: ["$$task.status", "Completed"] },
+                  cond: { $ne: ["$$task.status", "completed"] },
                 },
               },
             },
@@ -44,9 +40,9 @@ const getHRDashboard = async (req, res) => {
       }),
       Offer.countDocuments({
         expiryDate: { $gte: now, $lte: upcomingDate },
-        status: { $nin: ["Accepted", "Rejected", "Expired"] },
+        status: { $nin: ["accepted", "rejected", "expired", "declined"] },
       }),
-      Candidate.aggregate([
+      Application.aggregate([
         {
           $group: {
             _id: "$status",
@@ -96,7 +92,7 @@ const getHRDashboard = async (req, res) => {
 
 const getHRPipeline = async (req, res) => {
   try {
-    const pipeline = await Candidate.aggregate([
+    const pipeline = await Application.aggregate([
       {
         $group: {
           _id: "$status",
@@ -156,17 +152,11 @@ const exportHRData = async (req, res) => {
       });
     }
 
-    let Model;
-
-    if (type === "candidates") {
-      Model = Candidate;
-    } else if (type === "employees") {
-      Model = Employee;
-    } else {
-      Model = Offer;
-    }
-
-    const records = await Model.find().lean();
+    const records = type === "candidates"
+      ? await Application.find().lean()
+      : type === "employees"
+        ? await User.find({ role: { $in: ["employee", "intern"] } }).lean()
+        : await Offer.find().lean();
 
     if (records.length === 0) {
       return res.status(404).json({

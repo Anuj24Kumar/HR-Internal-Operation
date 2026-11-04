@@ -1,27 +1,28 @@
-import { LayoutGrid, FileText, Award } from "lucide-react";
+import { LayoutGrid, Clock, CheckCircle2 } from "lucide-react";
 import UnifiedSidebar from "../../components/UnifiedSidebar.jsx";
 
 export default function Sidebar({
   activeTab,
   setActiveTab,
-  evaluatedCount,
-  selectedCount = 0,
+  pendingCount = 0,
+  decisionsCount = 0,
   mobileOpen,
   onCloseMobile,
 }) {
   const tabs = [
-    { id: "overview", label: "Overview", icon: LayoutGrid },
+    { id: "overview", label: "Dashboard", icon: LayoutGrid },
     {
-      id: "offers",
-      label: "Offers",
-      icon: Award,
-      badge: selectedCount,
+      id: "pending",
+      label: "Pending Decisions",
+      icon: Clock,
+      badge: pendingCount,
+      badgeAlert: pendingCount > 0,
     },
     {
-      id: "history",
-      label: "Evaluation History",
-      icon: FileText,
-      badge: evaluatedCount,
+      id: "decisions",
+      label: "Decisions Made",
+      icon: CheckCircle2,
+      badge: decisionsCount,
     },
   ];
 

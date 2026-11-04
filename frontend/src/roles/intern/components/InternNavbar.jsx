@@ -47,17 +47,12 @@ export default function InternNavbar({ userMessage, onLogout, onToggleMobile }) 
     role: "intern",
   };
 
-  const notifications = [
-    { id: 1, title: "Onboarding Checklist", message: "Review pending onboarding tasks." },
-  ];
-
   return (
     <UnifiedNavbar
       user={user}
       roleLabel="Intern"
       onViewProfile={() => navigate("/intern/profile")}
       onLogout={onLogout}
-      notifications={notifications}
       onToggleMobile={onToggleMobile}
     />
   );

@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { User, Employee, Candidate, Offer, ApprovalRequest } = require("../../models");
+const { User, Application, Offer, ApprovalRequest } = require("../../models");
 
 /**
  * 1. Return headcount, open candidates, offers in flight, active users, system health stats
@@ -16,12 +16,9 @@ const getAdminDashboard = async (req, res) => {
       pendingApprovals,
     ] = await Promise.all([
       User.countDocuments({ isActive: true }),
-      Employee.countDocuments({ type: "employee", status: "active" }),
-      Employee.countDocuments({ type: "intern", status: "active" }),
-      Candidate.countDocuments({
-        status: { $in: ["applied", "screening", "interview", "Applied", "Screening", "Interview"] },
-        isArchived: { $ne: true },
-      }),
+      User.countDocuments({ role: "employee", status: "active" }),
+      User.countDocuments({ role: "intern", status: "active" }),
+      Application.countDocuments({ status: { $in: ["applied", "interview", "selected"] } }),
       Offer.countDocuments({
         status: { $in: ["draft", "pending_approval", "sent"] },
       }),
@@ -65,8 +62,7 @@ const getAdminDashboard = async (req, res) => {
  */
 const getPipelineDistribution = async (req, res) => {
   try {
-    const pipelineCounts = await Candidate.aggregate([
-      { $match: { isArchived: { $ne: true } } },
+    const pipelineCounts = await Application.aggregate([
       {
         $group: {
           _id: { $toLower: "$status" },
@@ -75,12 +71,15 @@ const getPipelineDistribution = async (req, res) => {
       },
     ]);
 
-    // Ensure all 5 stages exist in the response
+    // Keep every application stage present, including stages with no records.
     const distribution = {
       applied: 0,
-      screening: 0,
       interview: 0,
       selected: 0,
+      offer_sent: 0,
+      offer_received: 0,
+      accepted: 0,
+      converted: 0,
       rejected: 0,
       total: 0,
     };

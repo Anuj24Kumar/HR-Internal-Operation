@@ -4,12 +4,9 @@ import {
   LayoutDashboard,
   Users,
   CalendarDays,
-  BriefcaseBusiness,
   UserRound,
-  FileText,
-  Files,
-  ClipboardCheck,
   DoorOpen,
+  GraduationCap,
 } from "lucide-react";
 import useRoleAuth from "../useRoleAuth.js";
 import "../../styles.css";
@@ -31,22 +28,16 @@ const navigation = [
   { label: "Overview", path: "/hr/dashboard", icon: LayoutDashboard },
   { label: "Candidates", path: "/hr/candidates", icon: Users },
   { label: "Interviews", path: "/hr/interviews", icon: CalendarDays },
-  { label: "Offers", path: "/hr/offers", icon: BriefcaseBusiness },
   { label: "Employees", path: "/hr/employees", icon: UserRound },
-  { label: "Documents", path: "/hr/documents", icon: Files },
-  { label: "Letters", path: "/hr/letters", icon: FileText },
-  { label: "Onboarding", path: "/hr/onboarding", icon: ClipboardCheck },
+  { label: "Interns", path: "/hr/interns", icon: GraduationCap },
   { label: "Exit Management", path: "/hr/exits", icon: DoorOpen },
+  { label: "Profile", path: "/hr/profile", icon: UserRound },
 ];
 
 function HrLayout({ user, message, logout }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-
-  const notifications = [
-    { id: 1, title: "HR Operations", message: "All recruitment and onboarding workflows active." },
-  ];
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -66,7 +57,6 @@ function HrLayout({ user, message, logout }) {
           roleLabel="HR"
           onViewProfile={() => navigate("/hr/profile")}
           onLogout={logout}
-          notifications={notifications}
           onToggleMobile={() => setMobileOpen(!mobileOpen)}
         />
 
@@ -77,7 +67,8 @@ function HrLayout({ user, message, logout }) {
             <Route path="candidates" element={<Candidates />} />
             <Route path="interviews" element={<Interviews />} />
             <Route path="offers" element={<Offers />} />
-            <Route path="employees" element={<Employees />} />
+            <Route path="employees" element={<Employees key="employees" initialRoleTab="employee" />} />
+            <Route path="interns" element={<Employees key="interns" initialRoleTab="intern" />} />
             <Route path="documents" element={<Documents />} />
             <Route path="letters" element={<Letters />} />
             <Route path="onboarding" element={<Onboarding />} />

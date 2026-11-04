@@ -17,11 +17,12 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { apiRequest } from "../api";
+import { useAlert } from "../components/AlertProvider.jsx";
 
 const STATUS_STYLES = {
-  Pending: "bg-amber-50 text-amber-700 ring-amber-200",
-  Verified: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-  Rejected: "bg-red-50 text-red-700 ring-red-200",
+  pending: "bg-amber-50 text-amber-700 ring-amber-200",
+  verified: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  rejected: "bg-red-50 text-red-700 ring-red-200",
 };
 
 function getId(value) {
@@ -31,27 +32,13 @@ function getId(value) {
 }
 
 function getOwnerName(document) {
-  const owner = document.candidateId || document.employeeId;
+  const owner = document.ownerId;
 
   if (!owner || typeof owner !== "object") {
-    return document.ownerType || "—";
+    return document.ownerRole || "—";
   }
 
-  const personalInfo = owner.personalInfo || {};
-
-  const fullName =
-    personalInfo.fullName ||
-    personalInfo.name ||
-    [
-      personalInfo.firstName,
-      personalInfo.middleName,
-      personalInfo.lastName,
-    ]
-      .filter(Boolean)
-      .join(" ");
-
   return (
-    fullName ||
     owner.name ||
     owner.fullName ||
     owner.empId ||
@@ -97,7 +84,7 @@ function StatusBadge({ status }) {
         STATUS_STYLES[status] || "bg-gray-50 text-gray-600 ring-gray-200"
       }`}
     >
-      {status || "Unknown"}
+      {status ? `${status[0].toUpperCase()}${status.slice(1)}` : "Unknown"}
     </span>
   );
 }
@@ -141,11 +128,14 @@ function Modal({ title, subtitle, onClose, children, size = "max-w-lg" }) {
 }
 
 export default function Documents() {
+  const alert = useAlert();
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [ownerRoleFilter, setOwnerRoleFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -185,7 +175,11 @@ export default function Documents() {
 
     return documents.filter((document) => {
       const statusMatches =
-        statusFilter === "All" || document.status === statusFilter;
+        statusFilter === "all" || document.status === statusFilter;
+      const ownerRoleMatches =
+        ownerRoleFilter === "all" || document.ownerRole === ownerRoleFilter;
+      const categoryMatches =
+        categoryFilter === "all" || document.category === categoryFilter;
 
       const ownerName = getOwnerName(document);
 
@@ -194,11 +188,10 @@ export default function Documents() {
         document.documentName,
         document.fileName,
         document.documentType,
-        document.ownerType,
+        document.ownerRole,
         ownerName,
         document.status,
-        getId(document.candidateId),
-        getId(document.employeeId),
+        getId(document.ownerId),
         document.uploadedBy?.name,
         document.uploadedBy?.email,
       ]
@@ -206,16 +199,17 @@ export default function Documents() {
         .join(" ")
         .toLowerCase();
 
-      return statusMatches && (!query || searchText.includes(query));
+      return statusMatches && ownerRoleMatches && categoryMatches &&
+        (!query || searchText.includes(query));
     });
-  }, [documents, search, statusFilter]);
+  }, [documents, search, statusFilter, ownerRoleFilter, categoryFilter]);
 
   const stats = useMemo(
     () => ({
       total: documents.length,
-      pending: documents.filter((doc) => doc.status === "Pending").length,
-      verified: documents.filter((doc) => doc.status === "Verified").length,
-      rejected: documents.filter((doc) => doc.status === "Rejected").length,
+      pending: documents.filter((doc) => doc.status === "pending").length,
+      verified: documents.filter((doc) => doc.status === "verified").length,
+      rejected: documents.filter((doc) => doc.status === "rejected").length,
     }),
     [documents]
   );
@@ -274,9 +268,13 @@ export default function Documents() {
   async function handleVerify(document) {
     const id = getId(document);
 
-    if (!window.confirm("Are you sure you want to verify this document?")) {
-      return;
-    }
+    const confirmed = await alert.confirm({
+      title: "Verify document?",
+      message: "Are you sure you want to verify this document?",
+      type: "primary",
+      confirmText: "Verify",
+    });
+    if (!confirmed) return;
 
     setActionLoading(`verify-${id}`);
     setError("");
@@ -335,11 +333,13 @@ export default function Documents() {
   async function handleDelete(document) {
     const id = getId(document);
 
-    if (
-      !window.confirm(
-        `Delete "${document.originalName || document.documentName || "this document"}"? This also deletes its stored file.`
-      )
-    ) {
+    const confirmed = await alert.confirm({
+      title: "Delete document?",
+      message: `Delete "${document.originalName || document.documentName || "this document"}"? This also deletes its stored file.`,
+      type: "danger",
+      confirmText: "Delete",
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -484,7 +484,7 @@ export default function Documents() {
                 </p>
               </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="relative">
                   <Search
                     size={17}
@@ -505,10 +505,32 @@ export default function Documents() {
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                   aria-label="Filter by status"
                 >
-                  <option value="All">All statuses</option>
-                  <option value="Pending">Pending</option>
-                  <option value="Verified">Verified</option>
-                  <option value="Rejected">Rejected</option>
+                  <option value="all">All statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="verified">Verified</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+                <select
+                  value={ownerRoleFilter}
+                  onChange={(event) => setOwnerRoleFilter(event.target.value)}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700"
+                  aria-label="Filter by owner role"
+                >
+                  <option value="all">All owner roles</option>
+                  {["candidate", "intern", "employee"].map((role) => (
+                    <option key={role} value={role}>{role[0].toUpperCase() + role.slice(1)}</option>
+                  ))}
+                </select>
+                <select
+                  value={categoryFilter}
+                  onChange={(event) => setCategoryFilter(event.target.value)}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700"
+                  aria-label="Filter by category"
+                >
+                  <option value="all">All categories</option>
+                  {[...new Set(documents.map((item) => item.category).filter(Boolean))].sort().map((category) => (
+                    <option key={category} value={category}>{category.replace(/_/g, " ")}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -556,7 +578,7 @@ export default function Documents() {
                 <tbody className="divide-y divide-slate-100">
                   {filteredDocuments.map((document) => {
                     const id = getId(document);
-                    const isPending = document.status === "Pending";
+                    const isPending = document.status === "pending";
 
                     return (
                       <tr
@@ -591,7 +613,7 @@ export default function Documents() {
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-2">
                             <div className="rounded-lg bg-slate-100 p-2 text-slate-500">
-                              {document.employeeId ? (
+                              {document.ownerRole === "employee" || document.ownerRole === "intern" ? (
                                 <BriefcaseBusiness size={15} />
                               ) : (
                                 <UserRound size={15} />
@@ -602,11 +624,9 @@ export default function Documents() {
                                 {getOwnerName(document)}
                               </p>
                               <p className="mt-1 text-xs text-slate-500">
-                                {document.employeeId
-                                  ? "Employee"
-                                  : document.candidateId
-                                    ? "Candidate"
-                                    : document.ownerType || "Owner"}
+                                {document.ownerRole
+                                  ? `${document.ownerRole[0].toUpperCase()}${document.ownerRole.slice(1)}`
+                                  : "Owner"}
                               </p>
                             </div>
                           </div>
@@ -744,7 +764,9 @@ export default function Documents() {
               <DetailItem
                 label="Owner type"
                 value={
-                  selectedDocument.employeeId ? "Employee" : "Candidate"
+                  selectedDocument.ownerRole
+                    ? `${selectedDocument.ownerRole[0].toUpperCase()}${selectedDocument.ownerRole.slice(1)}`
+                    : "—"
                 }
               />
               <DetailItem
@@ -758,8 +780,7 @@ export default function Documents() {
               <DetailItem
                 label="Owner ID"
                 value={getId(
-                  selectedDocument.candidateId ||
-                    selectedDocument.employeeId
+                  selectedDocument.ownerId
                 )}
               />
               <DetailItem

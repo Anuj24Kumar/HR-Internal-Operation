@@ -10,8 +10,6 @@ const {
   getCandidates,
   getCandidateById,
   updateCandidate,
-  updateCandidateStatus,
-  selectCandidate,
   archiveCandidate,
   deleteCandidate,
   getMyApplication,
@@ -21,6 +19,8 @@ const {
   updateCandidateDocument,
   deleteCandidateDocument,
   getMyOffer,
+  acceptOffer,
+  declineOffer,
   applyJob,
   getMyApplications,
   getApplicationById,
@@ -101,6 +101,19 @@ router.get(
   requireCandidate,
   getMyOffer
 );
+router.post(
+  "/offer/accept",
+  protect,
+  requireCandidate,
+  upload.any(),
+  acceptOffer
+);
+router.post(
+  "/offer/decline",
+  protect,
+  requireCandidate,
+  declineOffer
+);
 
 router.get(
   "/:id",
@@ -109,13 +122,6 @@ router.get(
   getCandidateById
 );
 router.patch("/:id", protect, authorize("hr"), updateCandidate);
-router.patch(
-  "/:id/status",
-  protect,
-  authorize("hr"),
-  updateCandidateStatus
-);
-router.patch("/:id/select", protect, authorize("hr"), selectCandidate);
 router.patch("/:id/archive", protect, authorize("hr"), archiveCandidate);
 router.delete("/:id", protect, authorize("admin"), deleteCandidate);
 

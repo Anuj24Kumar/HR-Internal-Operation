@@ -1,15 +1,12 @@
 const fs = require("fs");
 const path = require("path");
 
-const Document = require("../../models/Document");
-const Intern = require("../../models/Intern/Intern");
+const { Document, User: Intern } = require("../../models");
 
 // GET: Logged-in intern ke documents
 const getMyDocuments = async (req, res) => {
   try {
-    const intern = await Intern.findOne({
-      user: req.user.id,
-    });
+    const intern = await Intern.findOne({ _id: req.user.id, role: "intern" });
 
     if (!intern) {
       return res.status(404).json({
@@ -18,9 +15,7 @@ const getMyDocuments = async (req, res) => {
       });
     }
 
-    const documents = await Document.find({
-      user: req.user.id,
-    }).sort({ createdAt: -1 });
+    const documents = await Document.find({ ownerId: req.user.id }).sort({ createdAt: -1 });
 
     return res.status(200).json({
       success: true,
@@ -80,9 +75,7 @@ const uploadInternDocument = async (req, res) => {
       });
     }
 
-    const intern = await Intern.findOne({
-      user: req.user.id,
-    });
+    const intern = await Intern.findOne({ _id: req.user.id, role: "intern" });
 
     if (!intern) {
       return res.status(404).json({
@@ -92,11 +85,19 @@ const uploadInternDocument = async (req, res) => {
     }
 
     const document = await Document.create({
-      user: req.user.id,
+      ownerId: req.user.id,
+      ownerRole: "intern",
+      category: documentType === "resume" ? "resume" : "other",
       documentType,
-      documentName: documentName.trim(),
+      label: documentName.trim(),
+      originalName: req.file.originalname,
+      fileName: req.file.filename,
+      filePath: req.file.path,
       fileUrl: `/uploads/candidate-documents/${req.file.filename}`,
+      mimeType: req.file.mimetype,
+      fileSize: req.file.size,
       status: "pending",
+      uploadedBy: req.user.id,
     });
 
     return res.status(201).json({
@@ -145,9 +146,7 @@ const updateInternDocument = async (req, res) => {
 
     uploadedFilePath = req.file.path;
 
-    const intern = await Intern.findOne({
-      user: req.user.id,
-    });
+    const intern = await Intern.findOne({ _id: req.user.id, role: "intern" });
 
     if (!intern) {
       return res.status(404).json({
@@ -158,7 +157,7 @@ const updateInternDocument = async (req, res) => {
 
     const document = await Document.findOne({
       _id: id,
-      user: req.user.id,
+      ownerId: req.user.id,
     });
 
     if (!document) {
@@ -181,7 +180,11 @@ const updateInternDocument = async (req, res) => {
       `/uploads/candidate-documents/${req.file.filename}`;
     document.status = "pending";
     document.rejectionReason = "";
-    document.uploadedAt = new Date();
+    document.originalName = req.file.originalname;
+    document.fileName = req.file.filename;
+    document.filePath = req.file.path;
+    document.mimeType = req.file.mimetype;
+    document.fileSize = req.file.size;
 
     await document.save();
 

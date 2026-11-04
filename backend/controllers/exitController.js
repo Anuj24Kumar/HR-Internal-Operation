@@ -1,8 +1,6 @@
 
 const mongoose = require("mongoose");
-const Exit = require("../models/Exit");
-const Employee = require("../models/Employee");
-const ApprovalRequest = require("../models/ApprovalRequest");
+const { Exit, User: Employee, ApprovalRequest } = require("../models");
 
 const fs = require("fs");
 const path = require("path");
@@ -13,7 +11,7 @@ const getAllExits = async (req, res) => {
     const exits = await Exit.find()
       .populate(
         "employeeId",
-        "empId personalInfo department designation joiningDate status"
+        "empId name department designation joiningDate status"
       )
       .populate("createdBy", "name email")
       .populate("approvedBy", "name email")
@@ -52,7 +50,7 @@ const createExit = async (req, res) => {
       });
     }
 
-    const employee = await Employee.findById(employeeId);
+    const employee = await Employee.findOne({ _id: employeeId, role: { $in: ["employee", "intern"] } });
 
     if (!employee) {
       return res.status(404).json({
@@ -63,7 +61,7 @@ const createExit = async (req, res) => {
 
     const existingExit = await Exit.findOne({
       employeeId,
-      status: { $in: ["Pending Approval", "Approved"] },
+      status: { $in: ["pending_approval", "approved"] },
     });
 
     if (existingExit) {
@@ -99,7 +97,7 @@ const createExit = async (req, res) => {
       lastWorkingDay: lastDay,
       reason: reason.trim(),
       createdBy: req.user.id,
-      status: "Pending Approval",
+      status: "pending_approval",
     });
 
     let approvalRequest;
@@ -109,7 +107,7 @@ const createExit = async (req, res) => {
         requestType: "Other",
         resourceId: exit._id,
         requestedBy: req.user.id,
-        status: "Pending",
+        status: "pending",
       });
 
       exit.approvalRequestId = approvalRequest._id;
@@ -121,7 +119,7 @@ const createExit = async (req, res) => {
     }
 
     const populatedExit = await Exit.findById(exit._id)
-      .populate("employeeId", "empId personalInfo department designation")
+      .populate("employeeId", "empId name department designation")
       .populate("createdBy", "name email");
 
     return res.status(201).json({
@@ -160,7 +158,7 @@ const getExitById = async (req, res) => {
     const exit = await Exit.findById(id)
       .populate(
         "employeeId",
-        "empId personalInfo department designation joiningDate status"
+        "empId name department designation joiningDate status"
       )
       .populate("createdBy", "name email")
       .populate("approvedBy", "name email");
@@ -214,14 +212,14 @@ const updateExitClearance = async (req, res) => {
       });
     }
 
-    if (exit.status !== "Approved") {
+    if (exit.status !== "approved") {
       return res.status(400).json({
         success: false,
         message: "Resignation must be approved before clearance",
       });
     }
 
-    exit.clearance[dept].status = "Completed";
+    exit.clearance[dept].status = "completed";
     exit.clearance[dept].clearedBy = req.user.id;
     exit.clearance[dept].clearedAt = new Date();
 
@@ -276,7 +274,7 @@ const approveExit = async (req, res) => {
       });
     }
 
-    if (exit.status !== "Pending Approval") {
+    if (exit.status !== "pending_approval") {
       return res.status(400).json({
         success: false,
         message: "Only pending exit requests can be reviewed",
@@ -301,15 +299,15 @@ const approveExit = async (req, res) => {
       });
     }
 
-    if (approvalRequest.status !== "Pending") {
+    if (approvalRequest.status !== "pending") {
       return res.status(400).json({
         success: false,
         message: "Approval request has already been reviewed",
       });
     }
 
-    const nextStatus = action === "approved" ? "Approved" : "Rejected";
-    const requestStatus = action === "approved" ? "Approved" : "Rejected";
+    const nextStatus = action;
+    const requestStatus = action;
 
     approvalRequest.status = requestStatus;
     approvalRequest.approverId = req.user.id;
@@ -363,7 +361,7 @@ const generateExitLetters = async (req, res) => {
 
     const exit = await Exit.findById(id).populate(
       "employeeId",
-      "empId personalInfo department designation joiningDate"
+      "empId name department designation joiningDate"
     );
 
     if (!exit) {
@@ -373,7 +371,7 @@ const generateExitLetters = async (req, res) => {
       });
     }
 
-    if (exit.status !== "Approved") {
+    if (exit.status !== "approved") {
       return res.status(400).json({
         success: false,
         message: "Exit request must be approved before generating letters",
@@ -383,7 +381,7 @@ const generateExitLetters = async (req, res) => {
     const departments = ["it", "finance", "manager", "hr"];
 
     const allCleared = departments.every(
-      (dept) => exit.clearance[dept]?.status === "Completed"
+      (dept) => exit.clearance[dept]?.status === "completed"
     );
 
     if (!allCleared) {
@@ -397,7 +395,7 @@ const generateExitLetters = async (req, res) => {
     fs.mkdirSync(uploadDir, { recursive: true });
 
     const employee = exit.employeeId;
-    const employeeName = employee?.personalInfo?.name || "Employee";
+    const employeeName = employee?.name || "Employee";
     const empId = employee?.empId || "N/A";
 
     const generatePdf = (filePath, title, bodyText) =>
@@ -495,7 +493,7 @@ const completeExit = async (req, res) => {
       });
     }
 
-    if (exit.status !== "Approved") {
+    if (exit.status !== "approved") {
       return res.status(400).json({
         success: false,
         message: "Only approved exit requests can be completed",
@@ -505,7 +503,7 @@ const completeExit = async (req, res) => {
     const departments = ["it", "finance", "manager", "hr"];
 
     const allCleared = departments.every(
-      (dept) => exit.clearance[dept]?.status === "Completed"
+      (dept) => exit.clearance[dept]?.status === "completed"
     );
 
     if (!allCleared) {
@@ -531,10 +529,11 @@ const completeExit = async (req, res) => {
       });
     }
 
-    employee.status = "Exited";
+    employee.status = "inactive";
+    employee.isActive = false;
     await employee.save();
 
-    exit.status = "Completed";
+    exit.status = "completed";
     exit.completedAt = new Date();
     await exit.save();
 

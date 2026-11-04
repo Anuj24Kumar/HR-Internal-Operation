@@ -3,6 +3,7 @@ const {
   registerUser,
   loginUser,
   getMe,
+  logoutUser,
   getAdminData,
   seedInitialData,
 } = require("../controllers/authController");
@@ -15,6 +16,7 @@ router.post("/register", registerUser);
 router.post("/login", loginUser);
 router.post("/seed", seedInitialData);
 router.get("/me", protect, getMe);
+router.post("/logout", protect, logoutUser);
 router.get(
   "/test-admin",
   protect,

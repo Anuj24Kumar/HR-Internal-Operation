@@ -23,8 +23,6 @@ import {
   Video,
 } from "lucide-react";
 
-const STATUSES = ["applied", "interview", "selected", "offer", "rejected"];
-
 function formatDate(value) {
   if (!value) return "Not available";
   const date = new Date(value);
@@ -65,13 +63,11 @@ export default function CandidateDetailsModal({
   isOpen,
   onClose,
   candidate,
-  onStatusUpdate,
   onSelectCandidate,
   onGenerateOffer,
 }) {
   const navigate = useNavigate();
   const [copiedField, setCopiedField] = useState(null);
-  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   if (!isOpen || !candidate) return null;
 
@@ -94,23 +90,15 @@ export default function CandidateDetailsModal({
   const source = candidate.source || candidate.applicationSource || "Direct";
   const resumeUrl = candidate.resumeUrl;
   const resumeName = candidate.resumeOriginalName || "Candidate_Resume.pdf";
-  const timeline = Array.isArray(candidate.timeline) ? candidate.timeline : [];
+  const applications = Array.isArray(candidate.applications) ? candidate.applications : [];
+  const offers = Array.isArray(candidate.offers) ? candidate.offers : [];
+  const documents = Array.isArray(candidate.documents) ? candidate.documents : [];
+  const timeline = Array.isArray(candidate.timeline)
+    ? candidate.timeline
+    : applications[0]?.timeline || [];
   const interviews = Array.isArray(candidate.interviews) ? candidate.interviews : [];
   const recommendation = candidate.hiringRecommendation;
   const normalizedStatus = String(candidate.status || "").toLowerCase();
-
-  const handleStatusChange = async (e) => {
-    const newStatus = e.target.value;
-    if (!newStatus || newStatus === candidate.status) return;
-    setUpdatingStatus(true);
-    try {
-      if (onStatusUpdate) {
-        await onStatusUpdate(candidate, newStatus);
-      }
-    } finally {
-      setUpdatingStatus(false);
-    }
-  };
 
   const handleGenerateOfferClick = () => {
     if (onGenerateOffer) {
@@ -164,23 +152,7 @@ export default function CandidateDetailsModal({
         {/* Modal Scrollable Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Quick Actions Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/90 bg-slate-50/70 p-3.5">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-700">Change Status:</span>
-              <select
-                value={candidate.status?.toLowerCase() || "applied"}
-                onChange={handleStatusChange}
-                disabled={updatingStatus}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500"
-              >
-                {STATUSES.map((st) => (
-                  <option key={st} value={st}>
-                    {st.charAt(0).toUpperCase() + st.slice(1)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
+          <div className="flex flex-wrap items-center justify-end gap-3 rounded-xl border border-slate-200/90 bg-slate-50/70 p-3.5">
             {normalizedStatus === "selected" && (
               <button
                 type="button"
@@ -192,6 +164,106 @@ export default function CandidateDetailsModal({
               </button>
             )}
           </div>
+
+          {applications.length > 0 && (
+            <section className="rounded-2xl border border-slate-200 bg-white p-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                Application History
+              </h3>
+              <div className="mt-3 space-y-2">
+                {applications.map((application) => (
+                  <div key={application._id} className="flex flex-wrap justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm">
+                    <span className="font-semibold text-slate-800">
+                      {application.position} · {String(application.jobType || "").replace("_", " ")}
+                    </span>
+                    <span className="text-slate-600">{application.status}</span>
+                    <span className="text-xs text-slate-500">{formatDate(application.createdAt)}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-4">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Offer History ({offers.length})
+            </h3>
+            {offers.length === 0 ? (
+              <p className="mt-3 rounded-xl border border-dashed border-slate-200 p-4 text-center text-xs text-slate-500">
+                No offers have been created for this candidate.
+              </p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {offers.map((offer) => (
+                  <div key={offer._id} className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm">
+                    <div className="flex flex-wrap justify-between gap-2">
+                      <span className="font-semibold text-slate-800">{offer.designation || "Offer"} · {offer.offerType || "—"}</span>
+                      <span className="capitalize text-slate-600">{offer.status || "—"}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Compensation: ₹{Number(offer.salary || 0).toLocaleString("en-IN")} · Joining: {formatDate(offer.joiningDate)}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Sent: {formatDate(offer.sentAt || offer.createdAt)}{offer.acceptedAt ? ` · Accepted: ${formatDate(offer.acceptedAt)}` : ""}
+                    </p>
+                    {offer.pdfUrl && (
+                      <a href={offer.pdfUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline">
+                        View offer PDF <ExternalLink size={12} />
+                      </a>
+                    )}
+                    {Array.isArray(offer.requiredDocuments) && offer.requiredDocuments.length > 0 && (
+                      <ul className="mt-2 space-y-1 border-t border-slate-200 pt-2 text-xs text-slate-600">
+                        {offer.requiredDocuments.map((document) => (
+                          <li key={document.id} className="flex items-center justify-between gap-2">
+                            <span>{document.label}</span>
+                            <span className={document.uploadedDocumentId ? "font-semibold text-emerald-700" : "text-amber-700"}>
+                              {document.uploadedDocumentId ? "Uploaded" : document.required ? "Pending" : "Optional"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-4">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Documents ({documents.length + (resumeUrl ? 1 : 0)})
+            </h3>
+            <div className="mt-3 space-y-2">
+              {resumeUrl && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm">
+                  <span className="font-semibold text-slate-800">{resumeName}</span>
+                  <a href={resumeUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline">
+                    View resume <ExternalLink size={12} />
+                  </a>
+                </div>
+              )}
+              {documents.map((document) => (
+                <div key={document._id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm">
+                  <div>
+                    <p className="font-semibold text-slate-800">{document.label || document.originalName || "Document"}</p>
+                    <p className="text-xs text-slate-500">
+                      {document.originalName || document.documentType} · {document.status || "pending"} · {formatDate(document.uploadedAt || document.createdAt)}
+                    </p>
+                  </div>
+                  {(document.fileUrl || document.filePath) && (
+                    <a href={document.fileUrl || document.filePath} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline">
+                      View document <ExternalLink size={12} />
+                    </a>
+                  )}
+                </div>
+              ))}
+              {!resumeUrl && documents.length === 0 && (
+                <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-xs text-slate-500">
+                  No documents uploaded for this candidate.
+                </p>
+              )}
+            </div>
+          </section>
 
           {/* Candidate Overview Card */}
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -339,6 +411,7 @@ export default function CandidateDetailsModal({
               <div className="mt-3 space-y-3">
                 {interviews.map((round, idx) => {
                   const interviewer = round.interviewerId;
+                  const isCompleted = String(round.status || "").toLowerCase() === "completed";
                   const interviewerName =
                     typeof interviewer === "object"
                       ? interviewer.name || [interviewer.firstName, interviewer.lastName].filter(Boolean).join(" ") || interviewer.email
@@ -358,7 +431,7 @@ export default function CandidateDetailsModal({
                             {round.interviewType || "technical"}
                           </span>
                           <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold capitalize ${
-                            round.status === "completed" ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"
+                            isCompleted ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"
                           }`}>
                             {round.status || "scheduled"}
                           </span>
@@ -402,15 +475,23 @@ export default function CandidateDetailsModal({
                       {round.meetingLink && (
                         <div className="flex items-center gap-2 text-xs">
                           <Video size={14} className="text-blue-600" />
-                          <span className="font-medium text-slate-400">Meet Link: </span>
-                          <a
-                            href={round.meetingLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-medium text-blue-600 hover:underline truncate max-w-md"
-                          >
-                            {round.meetingLink}
-                          </a>
+                          <span className="font-medium text-slate-400">
+                            {isCompleted ? "Meeting: " : "Meet Link: "}
+                          </span>
+                          {isCompleted ? (
+                            <span className="truncate max-w-md text-slate-400">
+                              Unavailable — interview completed
+                            </span>
+                          ) : (
+                            <a
+                              href={round.meetingLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-medium text-blue-600 hover:underline truncate max-w-md"
+                            >
+                              {round.meetingLink}
+                            </a>
+                          )}
                         </div>
                       )}
 

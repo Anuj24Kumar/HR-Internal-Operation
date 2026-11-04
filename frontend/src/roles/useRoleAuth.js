@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiRequest } from "../api.js";
+import { useAlert } from "../components/AlertProvider.jsx";
 
 export default function useRoleAuth(role) {
+  const alert = useAlert();
   const navigate = useNavigate();
   const [message, setMessage] = useState("Checking account...");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -68,7 +70,21 @@ export default function useRoleAuth(role) {
     };
   }, [navigate, role]);
 
-  function logout() {
+  async function logout() {
+    const confirmed = await alert.confirm({
+      title: "Log out?",
+      message: "You will be returned to the login screen.",
+      type: "warning",
+      confirmText: "Log out",
+    });
+    if (!confirmed) return;
+
+    try {
+      await apiRequest("/auth/logout", { method: "POST" });
+    } catch (error) {
+      console.error("Unable to complete logout request:", error.message);
+    }
+
     localStorage.removeItem("hr-auth-token");
     setToken("");
     setUser(null);

@@ -90,14 +90,16 @@ export default function ConfirmModal({
         </div>
 
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={loading}
-            className="inline-flex justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition focus:outline-none disabled:opacity-50"
-          >
-            {cancelText}
-          </button>
+          {cancelText && (
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={loading}
+              className="inline-flex justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition focus:outline-none disabled:opacity-50"
+            >
+              {cancelText}
+            </button>
+          )}
 
           <button
             type="button"

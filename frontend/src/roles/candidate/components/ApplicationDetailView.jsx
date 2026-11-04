@@ -286,6 +286,7 @@ export default function ApplicationDetailView({ application, onBack }) {
                 typeof interviewer === "object"
                   ? interviewer.name || [interviewer.firstName, interviewer.lastName].filter(Boolean).join(" ") || interviewer.email
                   : "Assigned Panelist";
+              const isCompleted = String(round.status || "").toLowerCase() === "completed";
 
               return (
                 <div
@@ -310,7 +311,7 @@ export default function ApplicationDetailView({ application, onBack }) {
                       </p>
                     </div>
 
-                    {round.meetingLink ? (
+                    {round.meetingLink && !isCompleted ? (
                       <a
                         href={round.meetingLink}
                         target="_blank"
@@ -321,6 +322,10 @@ export default function ApplicationDetailView({ application, onBack }) {
                         Join Meeting
                         <ExternalLink className="h-3.5 w-3.5 opacity-80" />
                       </a>
+                    ) : isCompleted ? (
+                      <span className="text-xs font-medium text-slate-400">
+                        Interview completed — meeting link unavailable
+                      </span>
                     ) : (
                       <span className="text-xs text-slate-400 italic">
                         Meeting link will be shared prior to the session.
@@ -344,9 +349,13 @@ export default function ApplicationDetailView({ application, onBack }) {
                     {round.meetingLink && (
                       <div className="truncate">
                         <span className="text-slate-400">Meeting URL: </span>
-                        <a href={round.meetingLink} target="_blank" rel="noopener noreferrer" className="font-medium text-blue-600 hover:underline">
-                          {round.meetingLink}
-                        </a>
+                        {isCompleted ? (
+                          <span className="font-medium text-slate-400">Unavailable — interview completed</span>
+                        ) : (
+                          <a href={round.meetingLink} target="_blank" rel="noopener noreferrer" className="font-medium text-blue-600 hover:underline">
+                            {round.meetingLink}
+                          </a>
+                        )}
                       </div>
                     )}
                   </div>

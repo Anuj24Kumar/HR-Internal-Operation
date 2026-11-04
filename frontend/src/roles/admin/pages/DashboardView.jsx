@@ -155,9 +155,12 @@ export default function DashboardView({ user, onSelectTab }) {
           >
             {[
               { stage: "Applied", count: pipeline.applied || 0, color: "#3b82f6", bg: "#eff6ff" },
-              { stage: "Screening", count: pipeline.screening || 0, color: "#8b5cf6", bg: "#f5f3ff" },
               { stage: "Interview", count: pipeline.interview || 0, color: "#f59e0b", bg: "#fffbeb" },
               { stage: "Selected", count: pipeline.selected || 0, color: "#10b981", bg: "#ecfdf5" },
+              { stage: "Offer Sent", count: pipeline.offer_sent || 0, color: "#8b5cf6", bg: "#f5f3ff" },
+              { stage: "Offer Received", count: pipeline.offer_received || 0, color: "#6366f1", bg: "#eef2ff" },
+              { stage: "Accepted", count: pipeline.accepted || 0, color: "#059669", bg: "#ecfdf5" },
+              { stage: "Converted", count: pipeline.converted || 0, color: "#0f766e", bg: "#f0fdfa" },
               { stage: "Rejected", count: pipeline.rejected || 0, color: "#ef4444", bg: "#fef2f2" },
             ].map((item) => (
               <div

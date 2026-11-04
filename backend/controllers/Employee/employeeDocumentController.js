@@ -1,8 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const Document = require("../../models/Document");
-const Employee = require("../../models/Employee/Employee");
+const { Document, User: Employee } = require("../../models");
 
 const ALLOWED_DOCUMENT_TYPES = [
   "resume",
@@ -22,7 +21,7 @@ const removeUploadedFile = (filePath) => {
 // GET /api/employee/documents
 const getMyEmployeeDocuments = async (req, res) => {
   try {
-    const employee = await Employee.findOne({ user: req.user.id });
+    const employee = await Employee.findOne({ _id: req.user.id, role: { $in: ["employee", "intern"] } });
 
     if (!employee) {
       return res.status(404).json({
@@ -31,9 +30,7 @@ const getMyEmployeeDocuments = async (req, res) => {
       });
     }
 
-    const documents = await Document.find({
-      user: req.user.id,
-    }).sort({ createdAt: -1 });
+    const documents = await Document.find({ ownerId: req.user.id }).sort({ createdAt: -1 });
 
     return res.status(200).json({
       success: true,
@@ -87,7 +84,7 @@ const uploadEmployeeDocument = async (req, res) => {
       });
     }
 
-    const employee = await Employee.findOne({ user: req.user.id });
+    const employee = await Employee.findOne({ _id: req.user.id, role: { $in: ["employee", "intern"] } });
 
     if (!employee) {
       removeUploadedFile(req.file.path);
@@ -99,11 +96,19 @@ const uploadEmployeeDocument = async (req, res) => {
     }
 
     const document = await Document.create({
-      user: req.user.id,
+      ownerId: req.user.id,
+      ownerRole: employee.role,
+      category: documentType === "resume" ? "resume" : "other",
       documentType,
-      documentName: documentName.trim(),
+      label: documentName.trim(),
+      originalName: req.file.originalname,
+      fileName: req.file.filename,
+      filePath: req.file.path,
       fileUrl: `/uploads/candidate-documents/${req.file.filename}`,
+      mimeType: req.file.mimetype,
+      fileSize: req.file.size,
       status: "pending",
+      uploadedBy: req.user.id,
       uploadedAt: new Date(),
     });
 
@@ -149,7 +154,7 @@ const updateEmployeeDocument = async (req, res) => {
       });
     }
 
-    const employee = await Employee.findOne({ user: req.user.id });
+    const employee = await Employee.findOne({ _id: req.user.id, role: { $in: ["employee", "intern"] } });
 
     if (!employee) {
       removeUploadedFile(req.file.path);
@@ -162,7 +167,7 @@ const updateEmployeeDocument = async (req, res) => {
 
     const document = await Document.findOne({
       _id: id,
-      user: req.user.id,
+      ownerId: req.user.id,
     });
 
     if (!document) {
@@ -187,10 +192,14 @@ const updateEmployeeDocument = async (req, res) => {
 
     document.fileUrl =
       `/uploads/candidate-documents/${req.file.filename}`;
+    document.originalName = req.file.originalname;
+    document.fileName = req.file.filename;
+    document.filePath = req.file.path;
+    document.mimeType = req.file.mimetype;
+    document.fileSize = req.file.size;
 
     document.status = "pending";
     document.rejectionReason = "";
-    document.uploadedAt = new Date();
 
     await document.save();
 

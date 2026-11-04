@@ -2,41 +2,25 @@ const mongoose = require("mongoose");
 
 const letterSchema = new mongoose.Schema(
   {
-    employeeId: { type: mongoose.Schema.Types.ObjectId, ref: "Employee", required: true, index: true },
-    templateId: { type: mongoose.Schema.Types.ObjectId, ref: "LetterTemplate", default: null },
-    type: {
-      type: String,
-      enum: ["offer", "appointment", "promotion", "increment", "experience", "relieving", "warning"],
-      index: true,
-    },
-    letterType: {
-      type: String,
-      trim: true,
-      enum: [
-        "Offer Letter", "Appointment Letter", "Internship Letter", "Experience Letter",
-        "Relieving Letter", "Promotion Letter", "Salary Revision Letter", "Warning Letter", "Other",
-      ],
-    },
-    template: { type: String, trim: true, default: "default" },
-    placeholders: { type: mongoose.Schema.Types.Mixed, default: {} },
-    version: { type: Number, default: 1, min: 1 },
-    status: {
-      type: String,
-      enum: ["draft", "pending_approval", "generated", "sent", "signed", "Draft", "Pending Approval", "Approved", "Sent", "Signed", "Rejected"],
-      default: "draft",
-      index: true,
-    },
-    pdfUrl: { type: String, default: null },
-    approvalId: { type: mongoose.Schema.Types.ObjectId, ref: "ApprovalRequest", default: null },
+    employeeId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    type: { type: String, enum: ["appointment", "promotion", "increment", "experience", "relieving", "warning", "other"], required: true },
+    title: { type: String, required: true },
+    templateId: { type: mongoose.Schema.Types.ObjectId, ref: "LetterTemplate" },
+    placeholders: mongoose.Schema.Types.Mixed,
+    version: { type: Number, min: 1, default: 1 },
+    status: { type: String, enum: ["draft", "pending_approval", "approved", "generated", "sent"], default: "draft" },
+    pdfUrl: String,
+    approvalId: { type: mongoose.Schema.Types.ObjectId, ref: "ApprovalRequest" },
     previousVersions: [{
-      version: { type: Number, required: true },
-      pdfUrl: { type: String, required: true },
-      generatedAt: { type: Date, default: Date.now },
+      version: Number,
+      pdfUrl: String,
+      generatedAt: Date,
+      _id: false,
     }],
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-    submittedAt: { type: Date, default: null },
+    issuedAt: Date,
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Letter", letterSchema);
+module.exports = mongoose.models.Letter || mongoose.model("Letter", letterSchema);

@@ -1,45 +1,60 @@
 const mongoose = require("mongoose");
 
+const requiredDocumentSchema = new mongoose.Schema(
+  {
+    id: { type: String, required: true },
+    label: { type: String, required: true },
+    acceptedTypes: [{ type: String }],
+    required: { type: Boolean, default: true },
+    uploadedDocumentId: { type: mongoose.Schema.Types.ObjectId, ref: "Document", default: null },
+    uploadedAt: { type: Date, default: null },
+  },
+  { _id: false }
+);
+
 const approvalHistorySchema = new mongoose.Schema(
   {
-    approverId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-    approverRole: { type: String, enum: ["admin", "hr", "hiring_manager"], required: true },
-    action: { type: String, enum: ["approved", "rejected"], required: true },
-    comments: { type: String, trim: true, default: "" },
-    decidedAt: { type: Date, default: Date.now },
+    approverId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    action: { type: String, enum: ["approved", "rejected"] },
+    comments: String,
+    decidedAt: Date,
   },
   { _id: false }
 );
 
 const offerSchema = new mongoose.Schema(
   {
-    candidateId: { type: mongoose.Schema.Types.ObjectId, ref: "Candidate", index: true },
-    candidate: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
-    offerType: { type: String, enum: ["intern", "employee"], default: "employee", required: true },
+    candidateId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    applicationId: { type: mongoose.Schema.Types.ObjectId, ref: "Application", required: true },
+    offerType: { type: String, enum: ["intern", "employee"], required: true },
     designation: { type: String, required: true, trim: true },
     salary: { type: Number, required: true, min: 0 },
     joiningDate: { type: Date, required: true },
-    expiryDate: { type: Date, default: null },
-    expiresAt: { type: Date, default: null },
+    expiryDate: Date,
     status: {
       type: String,
-      enum: [
-        "draft", "pending_approval", "sent", "accepted", "rejected", "expired",
-        "Draft", "Pending Approval", "Approved", "Sent", "Expired", "Accepted", "Rejected",
-      ],
+      enum: ["draft", "pending_approval", "approved", "sent", "offer_received", "accepted", "rejected", "expired", "declined"],
       default: "draft",
       index: true,
     },
-    templateId: { type: mongoose.Schema.Types.ObjectId, ref: "LetterTemplate", default: null },
-    template: { type: String, trim: true, default: "default" },
-    pdfUrl: { type: String, default: null },
-    approvalId: { type: mongoose.Schema.Types.ObjectId, ref: "ApprovalRequest", default: null },
-    approvalStatus: { type: String, enum: ["Pending", "Approved", "Rejected"], default: "Pending" },
+    requiredDocuments: { type: [requiredDocumentSchema], default: [] },
+    signedOfferLetterUrl: String,
+    signature: { type: String, maxlength: 10000 },
+    signedAt: Date,
+    acceptedAt: Date,
+    declinedAt: Date,
+    candidateComments: String,
+    signToken: { type: String, select: false },
+    signTokenExpiresAt: { type: Date, select: false },
+    templateId: { type: mongoose.Schema.Types.ObjectId, ref: "LetterTemplate" },
+    pdfUrl: String,
+    approvalId: { type: mongoose.Schema.Types.ObjectId, ref: "ApprovalRequest" },
+    approvalStatus: { type: String, enum: ["pending", "approved", "rejected", "not_required"], default: "not_required" },
     approvalHistory: { type: [approvalHistorySchema], default: [] },
-    sentAt: { type: Date, default: null },
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    sentAt: Date,
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Offer", offerSchema);
+module.exports = mongoose.models.Offer || mongoose.model("Offer", offerSchema);

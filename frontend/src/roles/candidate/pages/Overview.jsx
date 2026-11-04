@@ -1,28 +1,32 @@
 import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Plus,
   Briefcase,
   Calendar,
   FileText,
-  User,
+  Clock,
+  Award,
   ArrowRight,
   CheckCircle2,
-  Clock,
-  Sparkles,
+  AlertCircle,
+  Video,
 } from "lucide-react";
 import {
   getMyProfile,
   getMyApplications,
+  getMyOffer,
 } from "../services/candidateService.js";
 import ApplicationStatusBadge from "../components/ApplicationStatusBadge.jsx";
 import ApplyJobModal from "../components/ApplyJobModal.jsx";
-import ApplicationDetailView from "../components/ApplicationDetailView.jsx";
+import Spinner from "../../../components/Spinner.jsx";
+import EmptyState from "../../../components/EmptyState.jsx";
 
-function formatDate(value) {
-  if (!value) return "Not available";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Not available";
-  return date.toLocaleDateString("en-IN", {
+function formatDate(val) {
+  if (!val) return "—";
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-IN", {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -30,44 +34,42 @@ function formatDate(value) {
 }
 
 export default function Overview() {
+  const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [applications, setApplications] = useState([]);
-  const [selectedApp, setSelectedApp] = useState(null);
+  const [offer, setOffer] = useState(null);
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [successNotice, setSuccessNotice] = useState("");
 
-  const loadDashboard = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      setError("");
-
-      const [profileRes, appsRes] = await Promise.allSettled([
+      const [pRes, aRes, oRes] = await Promise.allSettled([
         getMyProfile(),
         getMyApplications(),
+        getMyOffer(),
       ]);
 
-      if (profileRes.status === "fulfilled") {
-        setProfile(profileRes.value.profile || profileRes.value.user || null);
+      if (pRes.status === "fulfilled") {
+        setProfile(pRes.value.profile || pRes.value.user || null);
       }
-
-      if (appsRes.status === "fulfilled") {
-        const appList =
-          appsRes.value.applications ||
-          appsRes.value.data ||
-          [];
-        setApplications(Array.isArray(appList) ? appList : []);
+      if (aRes.status === "fulfilled") {
+        const apps = aRes.value.applications || aRes.value.data || [];
+        setApplications(Array.isArray(apps) ? apps : []);
+      }
+      if (oRes.status === "fulfilled") {
+        setOffer(oRes.value.data || null);
       }
     } catch (err) {
-      setError(err.message || "Failed to load dashboard data.");
+      console.error("Dashboard load failed:", err.message);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadDashboard();
+    loadData();
   }, []);
 
   const candidateName =
@@ -78,247 +80,259 @@ export default function Overview() {
   const latestApp = applications[0] || null;
 
   if (loading && !profile) {
-    return (
-      <div className="space-y-6 animate-pulse">
-        <div className="h-8 w-64 rounded bg-slate-200" />
-        <div className="h-5 w-80 max-w-full rounded bg-slate-200" />
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          {[1, 2, 3].map((item) => (
-            <div key={item} className="h-28 rounded-2xl bg-white shadow-xs" />
-          ))}
-        </div>
-        <div className="h-64 rounded-2xl bg-white shadow-xs" />
-      </div>
-    );
+    return <Spinner message="Loading your dashboard..." />;
   }
 
-  // If viewing single application details
-  if (selectedApp) {
-    return (
-      <div className="mx-auto max-w-[1500px]">
-        <ApplicationDetailView
-          application={selectedApp}
-          onBack={() => setSelectedApp(null)}
-        />
-      </div>
-    );
-  }
+  // Count active interviews
+  let activeInterviewsCount = 0;
+  applications.forEach(a => {
+    if (a.currentInterviewId || (Array.isArray(a.interviews) && a.interviews.length > 0)) {
+      activeInterviewsCount++;
+    }
+  });
 
   return (
-    <div className="mx-auto max-w-[1500px] space-y-7">
-      {/* Top Header Row with 'Apply' button in the right corner */}
-      <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+    <div className="mx-auto max-w-6xl space-y-7 pb-16">
+      {/* Top Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <p className="text-xs font-medium text-slate-500">
-            Workspace <span className="mx-1.5">›</span> Dashboard
-          </p>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-            Candidate Dashboard
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+            Welcome, {candidateName}!
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Welcome, {candidateName}! Track your job applications, application status, and interview progress.
+          <p className="mt-1 text-xs text-slate-500">
+            Track your recruitment stages, interview schedules, and offer letters.
           </p>
         </div>
 
-        {/* Apply Button in Right Corner */}
-        <div className="flex items-center gap-3">
+        <div>
           <button
             type="button"
             onClick={() => setShowApplyModal(true)}
-            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-blue-700 active:scale-98 transition"
+            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-blue-700 active:scale-98 transition"
           >
             <Plus className="h-4 w-4" />
-            Apply
+            Apply for Position
           </button>
         </div>
-      </section>
+      </div>
 
       {/* Success Notification */}
       {successNotice && (
-        <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-            <span>{successNotice}</span>
+            <p className="font-semibold">{successNotice}</p>
           </div>
           <button
             type="button"
             onClick={() => setSuccessNotice("")}
-            className="text-xs font-semibold text-emerald-700 hover:text-emerald-900"
+            className="text-xs font-bold text-emerald-700 hover:underline"
           >
             Dismiss
           </button>
         </div>
       )}
 
-      {/* Error Notification */}
-      {error && (
-        <div
-          role="alert"
-          className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
-        >
-          {error}
-        </div>
-      )}
-
-      {/* Clean Metric Summary Cards */}
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
+      {/* Stat Cards (4 Cards: Total Apps, Current Status, Interviews Scheduled, Offer Status) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Stat 1: Applications Count */}
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-2xs">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Total Applications
-            </p>
-            <div className="rounded-xl bg-blue-50 p-2 text-blue-600">
+            <span className="text-xs font-semibold text-slate-500">My Applications</span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
               <Briefcase className="h-4 w-4" />
             </div>
           </div>
-          <p className="mt-3 text-2xl font-bold text-slate-900">
-            {applications.length}
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            {applications.length === 1
-              ? "1 submitted application"
-              : `${applications.length} submitted applications`}
-          </p>
+          <p className="mt-3 text-2xl font-bold text-slate-900">{applications.length}</p>
+          <p className="mt-1 text-[11px] text-slate-400">Total positions applied</p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
+        {/* Stat 2: Current Status */}
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-2xs">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Latest Status
-            </p>
-            <div className="rounded-xl bg-emerald-50 p-2 text-emerald-600">
+            <span className="text-xs font-semibold text-slate-500">Latest Pipeline Status</span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-50 text-purple-600">
               <Clock className="h-4 w-4" />
             </div>
           </div>
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-3">
             {latestApp ? (
               <ApplicationStatusBadge status={latestApp.status} />
             ) : (
-              <span className="text-sm font-medium text-slate-400">None yet</span>
+              <span className="text-sm font-semibold text-slate-400">No applications</span>
             )}
           </div>
-          <p className="mt-1 text-xs text-slate-500">
-            {latestApp ? `For ${latestApp.position}` : "Apply for an open position"}
+          <p className="mt-1 text-[11px] text-slate-400 truncate">
+            {latestApp ? latestApp.position || "Application" : "Ready to apply"}
           </p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
+        {/* Stat 3: Interviews Scheduled */}
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-2xs">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Candidate Profile
-            </p>
-            <div className="rounded-xl bg-indigo-50 p-2 text-indigo-600">
-              <User className="h-4 w-4" />
+            <span className="text-xs font-semibold text-slate-500">Interviews</span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+              <Calendar className="h-4 w-4" />
             </div>
           </div>
-          <p className="mt-3 text-sm font-bold text-slate-900 truncate">
-            {candidateName}
-          </p>
-          <p className="mt-1 text-xs text-slate-500 truncate">
-            {profile?.email || "Account verified"}
-          </p>
-        </div>
-      </section>
-
-      {/* Applied Applications Section */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs sm:p-7">
-        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center border-b border-slate-100 pb-5">
-          <div className="flex items-center gap-3">
-            <h2 className="text-lg font-bold text-slate-900">
-              Applied Applications
-            </h2>
-            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
-              {applications.length}
-            </span>
-          </div>
-
-          <p className="text-xs text-slate-500">
-            Click on any application to view real-time progress and details
-          </p>
+          <p className="mt-3 text-2xl font-bold text-slate-900">{activeInterviewsCount}</p>
+          <p className="mt-1 text-[11px] text-slate-400">Scheduled / Evaluated</p>
         </div>
 
-        {applications.length === 0 ? (
-          <div className="py-14 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-              <Briefcase className="h-7 w-7" />
+        {/* Stat 4: Offer Status */}
+        <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Offer Letter</span>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+              <Award className="h-4 w-4" />
             </div>
-            <h3 className="mt-4 text-base font-semibold text-slate-900">
-              No applications submitted yet
-            </h3>
-            <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
-              You haven't applied for any positions yet. Click the Apply button above to submit your application and upload your resume.
-            </p>
-            <div className="mt-6">
-              <button
-                type="button"
-                onClick={() => setShowApplyModal(true)}
-                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition"
+          </div>
+          <div className="mt-3">
+            {offer ? (
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
+                  offer.status === "accepted"
+                    ? "bg-emerald-100 text-emerald-800"
+                    : offer.status === "declined"
+                    ? "bg-rose-100 text-rose-800"
+                    : "bg-cyan-100 text-cyan-800"
+                }`}
               >
-                <Plus className="h-4 w-4" />
-                Apply Now
-              </button>
+                {offer.status.replace("_", " ")}
+              </span>
+            ) : (
+              <span className="text-xs font-medium text-slate-400">None Issued Yet</span>
+            )}
+          </div>
+          {offer ? (
+            <Link
+              to="/candidate/offer"
+              className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:underline"
+            >
+              View Offer Details →
+            </Link>
+          ) : (
+            <p className="mt-1 text-[11px] text-slate-400">Awaiting selection</p>
+          )}
+        </div>
+      </div>
+
+      {/* Offer Alert Banner if offer available and awaiting acceptance */}
+      {offer && (offer.status === "sent" || offer.status === "offer_received") && (
+        <div className="rounded-2xl border border-emerald-300 bg-emerald-50/80 p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white">
+              <Award className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-emerald-950">
+                You have received an offer for {offer.position || "your applied role"}!
+              </h3>
+              <p className="text-xs text-emerald-800 mt-0.5">
+                Review your offer details, download the letter, and submit required documents to accept.
+              </p>
             </div>
           </div>
-        ) : (
-          <div className="mt-6 divide-y divide-slate-100">
+
+          <Link
+            to="/candidate/offer"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 transition shrink-0"
+          >
+            Review Offer Letter
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      )}
+
+      {/* Applications List */}
+      <div className="rounded-2xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
+        <div className="flex items-center justify-between border-b border-slate-100 p-5">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">Application History</h2>
+            <p className="text-xs text-slate-500">
+              Click on an application to track its 7-stage progress and view interview feedback.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowApplyModal(true)}
+            className="text-xs font-bold text-blue-600 hover:text-blue-700 transition"
+          >
+            + Apply Another Role
+          </button>
+        </div>
+
+        {applications.length > 0 ? (
+          <div className="divide-y divide-slate-100">
             {applications.map((app) => (
               <div
-                key={app._id || app.id}
-                onClick={() => setSelectedApp(app)}
-                className="group flex flex-col justify-between gap-4 py-5 sm:flex-row sm:items-center cursor-pointer hover:bg-slate-50/80 -mx-6 px-6 rounded-xl transition"
+                key={app._id}
+                onClick={() => navigate(`/candidate/application/${app._id}`)}
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 hover:bg-slate-50/80 transition cursor-pointer"
               >
-                <div className="space-y-1.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-base font-semibold text-slate-900 group-hover:text-blue-600 transition">
-                      {app.position}
-                    </h3>
-                    <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
-                      {app.jobType || "Full-time"}
-                    </span>
-                    <ApplicationStatusBadge status={app.status} />
+                <div className="flex items-start gap-3.5 min-w-0">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                    <Briefcase className="h-5 w-5" />
                   </div>
-
-                  <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
-                    <span className="flex items-center gap-1.5">
-                      <Calendar className="h-3.5 w-3.5 text-slate-400" />
-                      Applied on {formatDate(app.appliedAt || app.createdAt)}
-                    </span>
-                    <span className="font-mono text-slate-400">
-                      ID: {app._id || app.id}
-                    </span>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-slate-900 truncate">
+                        {app.position || "Position"}
+                      </h3>
+                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-600">
+                        {app.jobType === "internship" ? "Internship" : "Full-time"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Applied on {formatDate(app.createdAt)} · Application ID:{" "}
+                      <span className="font-mono text-slate-600">{app._id}</span>
+                    </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedApp(app);
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-2xs group-hover:border-blue-300 group-hover:text-blue-600 transition"
-                  >
-                    View Details & Progress
-                    <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
-                  </button>
+                <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                  <ApplicationStatusBadge status={app.status} />
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700">
+                    View Timeline
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </span>
                 </div>
               </div>
             ))}
           </div>
+        ) : (
+          <div className="p-8">
+            <EmptyState
+              title="No applications yet"
+              message="You haven't applied for any positions yet. Click the button below to submit your first application!"
+              action={
+                <button
+                  type="button"
+                  onClick={() => setShowApplyModal(true)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition"
+                >
+                  <Plus className="h-4 w-4" />
+                  Apply Now
+                </button>
+              }
+            />
+          </div>
         )}
-      </section>
+      </div>
 
-      {/* Apply Job Modal */}
-      <ApplyJobModal
-        isOpen={showApplyModal}
-        onClose={() => setShowApplyModal(false)}
-        profile={profile}
-        onSuccess={(newApp) => {
-          setSuccessNotice(`Your application for "${newApp.position}" has been submitted successfully!`);
-          loadDashboard();
-          setSelectedApp(newApp);
-        }}
-      />
+      {/* Apply Modal */}
+      {showApplyModal && (
+        <ApplyJobModal
+          isOpen={showApplyModal}
+          onClose={() => setShowApplyModal(false)}
+          profile={profile}
+          onSuccess={(created) => {
+            setSuccessNotice("Application submitted successfully! Your application status is now applied.");
+            loadData();
+          }}
+        />
+      )}
     </div>
   );
 }

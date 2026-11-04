@@ -1,12 +1,9 @@
-const Employee = require("../../models/Employee/Employee");
-const Resignation = require("../../models/Employee/Resignation");
-const Exit = require("../../models/Exit");
-const ApprovalRequest = require("../../models/ApprovalRequest");
+const { User: Employee, Resignation, Exit, ApprovalRequest } = require("../../models");
 
 // GET /api/employee/resignation
 const getMyResignation = async (req, res) => {
   try {
-    const employee = await Employee.findOne({ user: req.user.id });
+    const employee = await Employee.findOne({ _id: req.user.id, role: { $in: ["employee", "intern"] } });
 
     if (!employee) {
       return res.status(404).json({
@@ -77,7 +74,7 @@ const submitResignation = async (req, res) => {
       });
     }
 
-    const employee = await Employee.findOne({ user: req.user.id });
+    const employee = await Employee.findOne({ _id: req.user.id, role: { $in: ["employee", "intern"] } });
 
     if (!employee) {
       return res.status(404).json({
@@ -135,13 +132,13 @@ const submitResignation = async (req, res) => {
         lastWorkingDay: lastWorkingDay,
         reason: reason.trim(),
         createdBy: req.user.id,
-        status: "Pending Approval",
+        status: "pending_approval",
       });
       const approvalRequest = await ApprovalRequest.create({
         requestType: "Other",
         resourceId: exitRecord._id,
         requestedBy: req.user.id,
-        status: "Pending",
+        status: "pending",
       });
       exitRecord.approvalRequestId = approvalRequest._id;
       await exitRecord.save();
@@ -175,7 +172,7 @@ const submitResignation = async (req, res) => {
 // DELETE /api/employee/resignation
 const withdrawResignation = async (req, res) => {
   try {
-    const employee = await Employee.findOne({ user: req.user.id });
+    const employee = await Employee.findOne({ _id: req.user.id, role: { $in: ["employee", "intern"] } });
 
     if (!employee) {
       return res.status(404).json({
@@ -202,8 +199,8 @@ const withdrawResignation = async (req, res) => {
 
     try {
       await Exit.updateMany(
-        { employeeId: employee._id, status: { $in: ["Pending Approval", "initiated"] } },
-        { status: "Rejected" }
+        { employeeId: employee._id, status: { $in: ["pending_approval", "initiated"] } },
+        { status: "rejected" }
       );
     } catch (exitWithdrawErr) {
       console.warn("Notice: Exit withdraw sync:", exitWithdrawErr.message);

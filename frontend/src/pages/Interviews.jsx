@@ -361,6 +361,7 @@ export default function Interviews() {
   }
 
   function openEditForm(interview) {
+    if (String(interview.status || "").toLowerCase() === "completed") return;
     setEditing(interview);
     setCandidateId(interview.candidateId);
     setCandidateLocked(true);
@@ -452,6 +453,7 @@ export default function Interviews() {
   }
 
   function deleteInterview(interview) {
+    if (String(interview.status || "").toLowerCase() === "completed") return;
     setConfirmModal({
       isOpen: true,
       title: "Delete Interview Round",
@@ -675,15 +677,22 @@ export default function Interviews() {
                   <>
                     <p className="font-medium text-slate-900">{formatDate(item.scheduledAt)}</p>
                     {item.meetingLink && (
-                      <a
-                        href={item.meetingLink}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline"
-                      >
-                        <Video size={13} />
-                        Join meeting
-                      </a>
+                      String(item.status || "").toLowerCase() === "completed" ? (
+                        <span className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-400">
+                          <Video size={13} />
+                          Interview completed
+                        </span>
+                      ) : (
+                        <a
+                          href={item.meetingLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline"
+                        >
+                          <Video size={13} />
+                          Join meeting
+                        </a>
+                      )
                     )}
                   </>
                 ) : (
@@ -708,7 +717,8 @@ export default function Interviews() {
                       type="button"
                       onClick={() => openEditForm(item)}
                       title="Edit interview round"
-                      className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 transition"
+                      disabled={String(item.status || "").toLowerCase() === "completed"}
+                      className="rounded-lg border border-slate-200 p-2 text-slate-600 transition enabled:hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <Pencil size={15} />
                     </button>
@@ -716,7 +726,8 @@ export default function Interviews() {
                       type="button"
                       onClick={() => deleteInterview(item)}
                       title="Delete interview round"
-                      className="rounded-lg border border-rose-200 p-2 text-rose-600 hover:bg-rose-50 transition"
+                      disabled={String(item.status || "").toLowerCase() === "completed"}
+                      className="rounded-lg border border-rose-200 p-2 text-rose-600 transition enabled:hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <Trash2 size={15} />
                     </button>

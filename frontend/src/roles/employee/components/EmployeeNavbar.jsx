@@ -45,17 +45,12 @@ export default function EmployeeNavbar({ userMessage, onLogout, onToggleMobile }
     role: "employee",
   };
 
-  const notifications = [
-    { id: 1, title: "Payroll Notice", message: "Latest payslip and tax summary are available." },
-  ];
-
   return (
     <UnifiedNavbar
       user={user}
       roleLabel="Employee"
       onViewProfile={() => navigate("/employee/profile")}
       onLogout={onLogout}
-      notifications={notifications}
       onToggleMobile={onToggleMobile}
     />
   );

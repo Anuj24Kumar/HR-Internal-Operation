@@ -25,6 +25,8 @@ const {
   withdrawResignation,
 } = require("../../controllers/Employee/resignationController");
 const {
+  getAcceptedOffers,
+  convertCandidate,
   getEmployees,
   getEmployeeById,
   updateEmployee,
@@ -33,6 +35,7 @@ const {
   updateEmployeeStatus,
 } = require("../../controllers/hr/employeeController");
 
+// Employee self-service routes
 router.get("/profile", protect, requireEmployee, getMyEmployeeProfile);
 router.get("/profile/history", protect, requireEmployee, getMyEmploymentHistory);
 router.get("/profile/salary", protect, requireEmployee, getMySalaryBreakdown);
@@ -57,11 +60,14 @@ router.get("/resignation", protect, requireEmployee, getMyResignation);
 router.post("/resignation", protect, requireEmployee, submitResignation);
 router.delete("/resignation", protect, requireEmployee, withdrawResignation);
 
+// HR-only & Management endpoints
 router.get("/", protect, authorize("admin", "hr"), getEmployees);
-router.get("/:id", protect, getEmployeeById);
-router.patch("/:id", protect, authorize("hr"), updateEmployee);
-router.post("/:id/history", protect, authorize("hr"), addEmployeeHistory);
+router.get("/accepted-offers", protect, authorize("admin", "hr"), getAcceptedOffers);
+router.post("/convert", protect, authorize("admin", "hr"), convertCandidate);
+router.get("/:id", protect, authorize("admin", "hr", "employee", "intern"), getEmployeeById);
+router.patch("/:id", protect, authorize("admin", "hr"), updateEmployee);
+router.patch("/:id/status", protect, authorize("admin", "hr"), updateEmployeeStatus);
+router.post("/:id/history", protect, authorize("admin", "hr"), addEmployeeHistory);
 router.get("/:id/history", protect, getEmployeeHistory);
-router.patch("/:id/status", protect, authorize("hr"), updateEmployeeStatus);
 
 module.exports = router;

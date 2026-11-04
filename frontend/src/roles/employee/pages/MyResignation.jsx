@@ -4,6 +4,7 @@ getMyResignation,
 submitResignation,
 withdrawResignation,
 } from "../services/employeeService";
+import { useAlert } from "../../../components/AlertProvider.jsx";
 
 function formatDate(date) {
 if (!date) return "—";
@@ -40,6 +41,7 @@ return "bg-amber-100 text-amber-700";
 }
 
 export default function MyResignation() {
+const alert = useAlert();
 const [resignation, setResignation] = useState(null);
 const [reason, setReason] = useState("");
 const [requestedLastWorkingDay, setRequestedLastWorkingDay] = useState("");
@@ -73,7 +75,6 @@ loadResignation();
 async function handleSubmit(event) {
 event.preventDefault();
 
-```
 setError("");
 setSuccess("");
 
@@ -109,11 +110,12 @@ try {
 }
 
 async function handleWithdraw() {
-const confirmed = window.confirm(
-"Are you sure you want to withdraw your resignation request?"
-);
-
-```
+const confirmed = await alert.confirm({
+  title: "Withdraw resignation request?",
+  message: "Are you sure you want to withdraw your resignation request?",
+  type: "warning",
+  confirmText: "Withdraw request",
+});
 if (!confirmed) return;
 
 setError("");

@@ -1,64 +1,56 @@
 import { useState, useEffect } from "react";
 import {
-  Users, 
-  CalendarDays, 
-  BriefcaseBusiness, 
-  ChevronRight, 
-  Star, 
-  CheckCircle2, 
-  ThumbsUp, 
-  ThumbsDown, 
-  FileText, 
-  AlertCircle, 
-  Filter,
+  Users,
+  CalendarDays,
+  BriefcaseBusiness,
+  Star,
+  CheckCircle2,
+  Clock,
+  XCircle,
+  FileText,
+  ExternalLink,
   Search,
   RefreshCw,
-  ExternalLink,
+  X,
+  Send,
+  MessageSquare,
 } from "lucide-react";
 import useRoleAuth from "../useRoleAuth.js";
 import { apiRequest } from "../../api.js";
+import { useAlert } from "../../components/AlertProvider.jsx";
 import Sidebar from "./Sidebar.jsx";
 import Topbar from "./Topbar.jsx";
 import Profile from "./Profile.jsx";
+import Spinner from "../../components/Spinner.jsx";
+import EmptyState from "../../components/EmptyState.jsx";
+import StatusBadge from "../../components/StatusBadge.jsx";
 
 export default function HiringManagerEntry() {
+  const alert = useAlert();
   const { user, logout, isAuthenticated } = useRoleAuth("hiring_manager");
 
-  // Navigation tabs
-  const [activeTab, setActiveTab] = useState("overview");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [activeTab, setActiveTab] = useState("overview"); // "overview" | "pending" | "decisions" | "profile"
+  const [search, setSearch] = useState("");
 
-  // Dashboard metrics
   const [metrics, setMetrics] = useState({
     openRoles: 0,
     pipelineCandidates: 0,
     interviewsThisWeek: 0,
   });
 
-  // Data states
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [actionMessage, setActionMessage] = useState(null);
-  const [actionError, setActionError] = useState(null);
+  const [successNotice, setSuccessNotice] = useState("");
 
-  // Selected candidate for Evaluation Modal
-  const [selectedCandidate, setSelectedCandidate] = useState(null);
-  const [candidateDetail, setCandidateDetail] = useState(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
-  const [recommendDecision, setRecommendDecision] = useState("select");
-  const [recommendComments, setRecommendComments] = useState("");
-  const [submittingRecommend, setSubmittingRecommend] = useState(false);
-
-  // Notifications dropdown
-  const [showNotifications, setShowNotifications] = useState(false);
+  // Review Modal State
+  const [reviewCandidate, setReviewCandidate] = useState(null);
+  const [decision, setDecision] = useState("select");
+  const [comments, setComments] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [modalMode, setModalMode] = useState("review"); // "review" | "view"
 
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  function showProfile() {
-    setActiveTab("profile");
-  }
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -68,23 +60,22 @@ export default function HiringManagerEntry() {
 
   async function loadAllData() {
     setLoading(true);
-    setActionError(null);
     try {
-      // 1. Fetch dashboard stats
-      const dashRes = await apiRequest("/dashboard/hiring-manager");
-      if (dashRes.data) {
-        setMetrics(dashRes.data);
+      const [dashRes, candRes] = await Promise.allSettled([
+        apiRequest("/dashboard/hiring-manager"),
+        apiRequest("/hiring-manager/candidates?limit=100"),
+      ]);
+
+      if (dashRes.status === "fulfilled" && dashRes.value.data) {
+        setMetrics(dashRes.value.data);
       }
 
-      // 2. Fetch candidates
-      const candRes = await apiRequest("/hiring-manager/candidates?limit=50");
-      if (candRes.data) {
-        setCandidates(candRes.data);
+      if (candRes.status === "fulfilled") {
+        const list = candRes.value.data || [];
+        setCandidates(Array.isArray(list) ? list : []);
       }
-
     } catch (err) {
       console.error("Failed to load HM data:", err);
-      setActionError(err.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -96,93 +87,82 @@ export default function HiringManagerEntry() {
     await loadAllData();
   }
 
-  // Open candidate details & evaluation drawer/modal
-  async function openCandidateEvaluation(cand) {
-    setSelectedCandidate(cand);
-    setCandidateDetail(null);
-    setLoadingDetail(true);
-    setRecommendDecision("select");
-    setRecommendComments("");
-    try {
-      const res = await apiRequest(`/hiring-manager/candidates/${cand._id}`);
-      setCandidateDetail(res.data);
-    } catch (err) {
-      console.error("Failed to load candidate details:", err);
-      setActionError("Failed to fetch full candidate details: " + err.message);
-    } finally {
-      setLoadingDetail(false);
-    }
+  // Open review modal
+  function openReview(cand, mode = "review") {
+    setReviewCandidate(cand);
+    setModalMode(mode);
+    setDecision(cand.hiringRecommendation?.status === "reject" ? "reject" : "select");
+    setComments(cand.hiringRecommendation?.comments || "");
   }
 
-  // Submit Hiring Recommendation (Select / Reject with comments)
-  async function handleSubmitRecommendation(e) {
+  // Submit decision
+  async function handleSubmitDecision(e) {
     e.preventDefault();
-    if (!recommendComments.trim()) {
-      alert("Please enter evaluation comments before submitting.");
+    if (!comments.trim()) {
+      alert.toastError(
+        "Comments Required",
+        "Please provide decision comments explaining your recommendation."
+      );
       return;
     }
-    setSubmittingRecommend(true);
-    setActionError(null);
+
+    setSubmitting(true);
     try {
-      await apiRequest(`/hiring-manager/candidates/${selectedCandidate._id}/recommend`, {
+      await apiRequest(`/hiring-manager/candidates/${reviewCandidate._id}/recommend`, {
         method: "POST",
         body: JSON.stringify({
-          decision: recommendDecision,
-          comments: recommendComments.trim(),
+          decision,
+          comments: comments.trim(),
         }),
       });
 
-      setActionMessage(`Recommendation recorded successfully: ${recommendDecision.toUpperCase()}`);
-      setTimeout(() => setActionMessage(null), 4000);
+      alert.toastSuccess(
+        "Decision Submitted",
+        `Candidate successfully marked as ${decision === "select" ? "Selected" : "Rejected"}.`
+      );
 
-      // Refresh modal detail and global candidates
-      const updatedRes = await apiRequest(`/hiring-manager/candidates/${selectedCandidate._id}`);
-      setCandidateDetail(updatedRes.data);
-      loadAllData();
+      setReviewCandidate(null);
+      await loadAllData();
     } catch (err) {
-      console.error("Error submitting recommendation:", err);
-      alert("Failed to submit recommendation: " + err.message);
+      alert.toastError("Submission Failed", err.message || "Failed to submit decision.");
     } finally {
-      setSubmittingRecommend(false);
+      setSubmitting(false);
     }
   }
 
-  // Keep offer-approved candidates in the Offers tab instead of the overview.
-  const filteredCandidates = candidates.filter((c) => {
-    const hasCompletedInterview = Array.isArray(c.interviews) && c.interviews.some(
-      (round) => round.status === "completed" || round.rating != null || round.score != null || round.feedback
-    );
-    const isSelectedForOffer =
-      String(c.status || "").toLowerCase() === "selected" ||
-      String(c.hiringRecommendation?.status || "").toLowerCase() === "select";
-    if (isSelectedForOffer || !hasCompletedInterview) return false;
-
-    const matchesSearch = 
-      (c.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.position || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.department || "").toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesStatus = 
-      statusFilter === "all" || 
-      (c.status || "").toLowerCase() === statusFilter.toLowerCase();
-
-    return matchesSearch && matchesStatus;
+  // Candidates awaiting decision: application.status === "interview" and completed interview
+  const pendingCandidates = candidates.filter((c) => {
+    const isInterview = c.application?.status === "interview";
+    const hasCompletedInterview =
+      Array.isArray(c.interviews) &&
+      c.interviews.some((iv) => iv.status === "completed");
+    return isInterview && hasCompletedInterview;
   });
 
-  const evaluatedCandidates = candidates
-    .filter((candidate) => candidate.hiringRecommendation?.status)
-    .sort(
-      (a, b) =>
-        new Date(b.hiringRecommendation.recommendedAt || 0) -
-        new Date(a.hiringRecommendation.recommendedAt || 0)
+  // Candidates with decision made: application.status in ["selected", "rejected"]
+  const decisionsMade = candidates.filter((c) => {
+    const status = c.application?.status;
+    return status === "selected" || status === "rejected";
+  });
+
+  const filterList = (list) => {
+    if (!search.trim()) return list;
+    const q = search.toLowerCase();
+    return list.filter(
+      (c) =>
+        (c.name || "").toLowerCase().includes(q) ||
+        (c.position || "").toLowerCase().includes(q) ||
+        (c.email || "").toLowerCase().includes(q)
     );
+  };
 
   return (
     <div className="shell">
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        evaluatedCount={evaluatedCandidates.length}
+        pendingCount={pendingCandidates.length}
+        decisionsCount={decisionsMade.length}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
       />
@@ -190,575 +170,620 @@ export default function HiringManagerEntry() {
       <div className="main-shell md:ml-[260px]">
         <Topbar
           user={user}
-          onOpenProfile={showProfile}
+          onOpenProfile={() => setActiveTab("profile")}
           logout={logout}
           onToggleMobile={() => setMobileOpen(!mobileOpen)}
         />
 
-        {activeTab === "profile" ? (
-          <Profile user={user} />
-        ) : (
-        <main className="content-area">
-          {actionMessage && (
-            <div className="auth-success" role="status">
-              <CheckCircle2 size={18} className="shrink-0" />
-              <span>{actionMessage}</span>
-            </div>
-          )}
-
-          {actionError && (
-            <div className="auth-error" role="alert">
-              <AlertCircle size={18} className="shrink-0" />
-              <span>{actionError}</span>
-            </div>
-          )}
-
-          {activeTab === "overview" && (
+        <main className="content-area p-6 space-y-7 pb-20">
+          {activeTab === "profile" ? (
+            <Profile user={user} />
+          ) : (
             <>
-              <section className="metrics-grid">
-                <div className="metric-card">
-                  <div className="metric-top">
-                    <span className="metric-label">Open Roles</span>
-                    <span className="metric-icon-wrap indigo">
-                      <BriefcaseBusiness size={18} />
-                    </span>
-                  </div>
-                  <p className="metric-value">{metrics.openRoles}</p>
-                  <p className="metric-trend">
-                    <span>In your department</span>
-                  </p>
-                </div>
-
-                <div className="metric-card">
-                  <div className="metric-top">
-                    <span className="metric-label">Pipeline Candidates</span>
-                    <span className="metric-icon-wrap emerald">
-                      <Users size={18} />
-                    </span>
-                  </div>
-                  <p className="metric-value">{metrics.pipelineCandidates}</p>
-                  <p className="metric-trend">
-                    <span>Assigned to your team</span>
-                  </p>
-                </div>
-
-                <div className="metric-card">
-                  <div className="metric-top">
-                    <span className="metric-label">Interviews This Week</span>
-                    <span className="metric-icon-wrap purple">
-                      <CalendarDays size={18} />
-                    </span>
-                  </div>
-                  <p className="metric-value">{metrics.interviewsThisWeek}</p>
-                  <p className="metric-trend">
-                    <span>Scheduled rounds</span>
-                  </p>
-                </div>
-
-              </section>
-            </>
-          )}
-
-          {activeTab === "overview" && (
-            <div className="card-box">
-              <div className="card-box-header">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h2 className="card-box-title">Assigned Candidates</h2>
-                  <p className="card-box-subtitle">Review interview feedback and submit hiring recommendations</p>
+                  <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+                    Hiring Manager Portal
+                  </h1>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Review completed interview assessments and make final candidate selections.
+                  </p>
                 </div>
 
-                <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-                  <div className="input-wrapper" style={{ width: "220px" }}>
-                    <Search className="input-icon-left" size={14} />
-                    <input
-                      type="search"
-                      className="form-input input-with-left-icon"
-                      style={{ padding: "6px 10px 6px 34px", fontSize: "12px" }}
-                      placeholder="Search candidates..."
-                      aria-label="Search candidates"
-                      value={searchQuery}
-                      onChange={(event) => setSearchQuery(event.target.value)}
-                    />
-                  </div>
-                  <Filter size={14} style={{ color: "var(--muted-foreground)" }} />
-                  <select
-                    className="form-select"
-                    style={{ width: "160px", padding: "6px 10px", fontSize: "12px" }}
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                  >
-                    <option value="all">All Stages</option>
-                    <option value="applied">Applied</option>
-                    <option value="screening">Screening</option>
-                    <option value="interview">Interview</option>
-                    <option value="rejected">Rejected</option>
-                  </select>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                  <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
+                </button>
               </div>
 
-              {loading ? (
-                <div className="empty-state">
-                  <p>Loading candidates data...</p>
-                </div>
-              ) : filteredCandidates.length === 0 ? (
-                <div className="empty-state">
-                  <Users className="empty-icon" />
-                  <p className="empty-title">No candidates found</p>
-                  <p className="empty-desc">
-                    {searchQuery || statusFilter !== "all"
-                      ? "Try adjusting your search criteria or stage filters."
-                      : "There are currently no candidates assigned to your department."}
-                  </p>
-                </div>
-              ) : (
-                <div className="table-wrapper">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Candidate</th>
-                        <th>Position & Team</th>
-                        <th>Stage</th>
-                        <th>Interview Rounds</th>
-                        <th>Recommendation</th>
-                        <th style={{ textAlign: "right" }}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredCandidates.map((cand) => {
-                        const interviewCount = cand.interviews?.length || 0;
-                        const completedInterviews = cand.interviews?.filter(i => i.rating != null).length || 0;
-                        const recStatus = cand.hiringRecommendation?.status;
-
-                        return (
-                          <tr key={cand._id}>
-                            <td>
-                              <div>
-                                <strong style={{ fontWeight: 600 }}>{cand.name}</strong>
-                                <p style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{cand.email}</p>
-                              </div>
-                            </td>
-                            <td>
-                              <div>
-                                <span style={{ fontWeight: 500 }}>{cand.position}</span>
-                                <p style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                                  {cand.department || "Engineering"} • {cand.source || "Direct"}
-                                </p>
-                              </div>
-                            </td>
-                            <td>
-                              <span className={`status-pill ${(cand.status || "").toLowerCase()}`}>
-                                {cand.status}
-                              </span>
-                            </td>
-                            <td>
-                              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                <span style={{ fontSize: "12px", fontWeight: 500 }}>
-                                  {completedInterviews}/{interviewCount} rounds evaluated
-                                </span>
-                              </div>
-                            </td>
-                            <td>
-                              {recStatus ? (
-                                <span className={`status-pill ${recStatus === "select" ? "selected" : "rejected"}`}>
-                                  {recStatus === "select" ? "Selected by HM" : "Rejected by HM"}
-                                </span>
-                              ) : (
-                                <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                                  Awaiting review
-                                </span>
-                              )}
-                            </td>
-                            <td style={{ textAlign: "right" }}>
-                              <button
-                                type="button"
-                                className="btn-action-primary"
-                                onClick={() => openCandidateEvaluation(cand)}
-                              >
-                                <span>Evaluate Candidate</span>
-                                <ChevronRight size={14} />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-
-
-          {/* TAB CONTENT: EVALUATION HISTORY */}
-          {activeTab === "history" && (
-            <div className="card-box">
-              <div className="card-box-header">
-                <div>
-                  <h2 className="card-box-title">
-                    Evaluation History <span className="text-slate-500">({evaluatedCandidates.length})</span>
-                  </h2>
-                  <p className="card-box-subtitle">Candidates you have evaluated and your recorded decisions</p>
-                </div>
-              </div>
-
-              {loading ? (
-                <div className="empty-state"><p>Loading evaluation history...</p></div>
-              ) : evaluatedCandidates.length === 0 ? (
-                <div className="empty-state">
-                  <Users className="empty-icon" />
-                  <p className="empty-title">No candidate evaluations yet</p>
-                  <p className="empty-desc">Your completed candidate evaluations will appear here.</p>
-                </div>
-              ) : (
-                <div className="table-wrapper">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Candidate</th>
-                        <th>Position & Team</th>
-                        <th>Interview Evaluation</th>
-                        <th>Decision</th>
-                        <th>Evaluation Comments</th>
-                        <th>Evaluated</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {evaluatedCandidates.map((candidate) => {
-                        const latestRound = candidate.interviews?.[candidate.interviews.length - 1];
-                        const decision = candidate.hiringRecommendation.status;
-
-                        return (
-                          <tr key={candidate._id}>
-                            <td>
-                              <strong>{candidate.name}</strong>
-                              <p className="text-xs text-slate-500">{candidate.email || "—"}</p>
-                            </td>
-                            <td>
-                              <span>{candidate.position || "—"}</span>
-                              <p className="text-xs text-slate-500">{candidate.department || "Engineering"}</p>
-                            </td>
-                            <td>
-                              <div className="flex flex-wrap items-center gap-2">
-                                {latestRound?.score != null && (
-                                  <span className="status-pill interview">Score: {latestRound.score}/100</span>
-                                )}
-                                {latestRound?.rating != null ? (
-                                  <span className="text-xs font-semibold">{latestRound.rating}/5 stars</span>
-                                ) : (
-                                  <span className="text-xs text-slate-500">No rating</span>
-                                )}
-                              </div>
-                            </td>
-                            <td>
-                              <span className={`status-pill ${decision === "select" ? "selected" : "rejected"}`}>
-                                {decision === "select" ? "Selected" : "Rejected"}
-                              </span>
-                            </td>
-                            <td className="max-w-sm whitespace-normal">{candidate.hiringRecommendation.comments || "—"}</td>
-                            <td>
-                              {candidate.hiringRecommendation.recommendedAt
-                                ? new Date(candidate.hiringRecommendation.recommendedAt).toLocaleDateString()
-                                : "—"}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-
-        </main>
-        )}
-
-      </div>
-
-      {/* ============================================================
-          CANDIDATE EVALUATION MODAL / DRAWER
-          ============================================================ */}
-      {selectedCandidate && (
-        <div className="modal-overlay" onClick={() => setSelectedCandidate(null)}>
-          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
-            <header className="modal-header">
-              <h3 className="modal-title">Candidate Evaluation & Feedback</h3>
-              <button
-                type="button"
-                className="modal-close-btn"
-                onClick={() => setSelectedCandidate(null)}
-              >
-                ✕
-              </button>
-            </header>
-
-            <div className="modal-body">
-              {loadingDetail ? (
-                <div className="empty-state">
-                  <p>Loading candidate details & interview assessments...</p>
-                </div>
-              ) : candidateDetail ? (
-                <>
-                  {/* Candidate Profile Summary */}
-                  <div className="candidate-detail-header">
-                    <div className="candidate-avatar">
-                      {candidateDetail.name.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div>
-                      <h4 style={{ fontSize: "18px", fontWeight: 700 }}>{candidateDetail.name}</h4>
-                      <p style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>
-                        {candidateDetail.position} • {candidateDetail.department || "Engineering"}
+              {/* TAB 1: DASHBOARD OVERVIEW */}
+              {activeTab === "overview" && (
+                <div className="space-y-6">
+                  {/* Stat cards: Open Roles, Candidates in Pipeline, Interviews This Week */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-slate-500">Open Roles</span>
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                          <BriefcaseBusiness className="h-4 w-4" />
+                        </div>
+                      </div>
+                      <p className="mt-3 text-2xl font-bold text-slate-900">
+                        {metrics.openRoles ?? 0}
                       </p>
+                      <p className="mt-1 text-[11px] text-slate-400">Active hiring positions</p>
                     </div>
-                    <div style={{ marginLeft: "auto" }}>
-                      <span className={`status-pill ${(candidateDetail.status || "").toLowerCase()}`}>
-                        {candidateDetail.status}
-                      </span>
+
+                    <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-slate-500">Candidates in Pipeline</span>
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-50 text-purple-600">
+                          <Users className="h-4 w-4" />
+                        </div>
+                      </div>
+                      <p className="mt-3 text-2xl font-bold text-slate-900">
+                        {metrics.pipelineCandidates ?? candidates.length}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-400">Total applicants evaluated</p>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-slate-500">Interviews This Week</span>
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                          <CalendarDays className="h-4 w-4" />
+                        </div>
+                      </div>
+                      <p className="mt-3 text-2xl font-bold text-slate-900">
+                        {metrics.interviewsThisWeek ?? 0}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-400">Completed or upcoming</p>
                     </div>
                   </div>
 
-                  {/* Metadata info */}
-                  <div className="detail-info-grid">
-                    <div className="detail-info-item">
-                      <span className="detail-info-label">Email Address</span>
-                      <span className="detail-info-val">{candidateDetail.email}</span>
-                    </div>
-                    <div className="detail-info-item">
-                      <span className="detail-info-label">Phone</span>
-                      <span className="detail-info-val">{candidateDetail.phone || "Not provided"}</span>
-                    </div>
-                    <div className="detail-info-item">
-                      <span className="detail-info-label">Application Source</span>
-                      <span className="detail-info-val">{candidateDetail.source || "Direct"}</span>
-                    </div>
-                    <div className="detail-info-item">
-                      <span className="detail-info-label">Applied Date</span>
-                      <span className="detail-info-val">
-                        {new Date(candidateDetail.appliedDate || candidateDetail.createdAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                    {candidateDetail.resumeUrl && (
-                      <div className="detail-info-item">
-                        <span className="detail-info-label">Resume</span>
-                        <a
-                          className="detail-info-val inline-flex items-center gap-1 text-blue-700 hover:underline"
-                          href={candidateDetail.resumeUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          View resume <ExternalLink size={13} />
-                        </a>
+                  {/* Quick Action Banner */}
+                  {pendingCandidates.length > 0 && (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50/70 p-5 shadow-2xs">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white">
+                          <Clock className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-bold text-amber-950">
+                            {pendingCandidates.length} Candidate{pendingCandidates.length === 1 ? "" : "s"} Awaiting Final Selection
+                          </h3>
+                          <p className="text-xs text-amber-800 mt-0.5">
+                            Interview feedback has been submitted. Review candidate scorecards to select or reject.
+                          </p>
+                        </div>
                       </div>
-                    )}
-                  </div>
 
-                  {/* Interview Rounds & Feedbacks */}
-                  <div>
-                    <h5 style={{ fontSize: "14px", fontWeight: 700, marginBottom: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
-                      <CalendarDays size={16} />
-                      <span>Interview Rounds & Interviewer Ratings</span>
-                    </h5>
-
-                    {(!candidateDetail.interviews || candidateDetail.interviews.length === 0) ? (
-                      <div className="empty-state" style={{ padding: "16px", background: "var(--secondary)", borderRadius: "var(--radius-md)" }}>
-                        <p style={{ fontSize: "13px" }}>No interview rounds scheduled yet for this candidate.</p>
-                      </div>
-                    ) : (
-                      <div className="rounds-timeline">
-                        {candidateDetail.interviews.map((round, idx) => (
-                          <div key={idx} className="round-card">
-                            <div className="round-card-top">
-                              <span style={{ fontWeight: 600, fontSize: "13px" }}>
-                                {round.roundName || `Round ${round.round}`} · {round.status || "Scheduled"}
-                              </span>
-                              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
-                                {round.score != null && (
-                                  <span className="status-pill interview">
-                                    Score: {round.score}/100
-                                  </span>
-                                )}
-                                {round.rating != null ? (
-                                  <div className="stars-row">
-                                    {[1, 2, 3, 4, 5].map((star) => (
-                                      <Star
-                                        key={star}
-                                        size={14}
-                                        className={`star-icon ${star <= round.rating ? "filled" : ""}`}
-                                      />
-                                    ))}
-                                    <span style={{ fontSize: "12px", fontWeight: 700, marginLeft: "4px" }}>
-                                      {round.rating}/5
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                                    No rating submitted yet
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            <p style={{ fontSize: "12px", color: "var(--muted-foreground)", marginBottom: "6px" }}>
-                              Type: {round.interviewType || "Interview"} • Interviewer: {round.interviewerId?.name || "Assigned Panelist"} ({round.interviewerId?.email || "Panel"})
-                              {round.scheduledAt && ` • Date: ${new Date(round.scheduledAt).toLocaleString()}`}
-                            </p>
-
-                            {round.feedback ? (
-                              <div style={{
-                                padding: "8px 12px",
-                                background: "var(--secondary)",
-                                borderRadius: "var(--radius-sm)",
-                                fontSize: "12px",
-                                color: "var(--foreground)",
-                                fontStyle: "italic",
-                                marginTop: "6px"
-                              }}>
-                                "{round.feedback}"
-                              </div>
-                            ) : (
-                              <p style={{ fontSize: "11px", color: "var(--muted-foreground)", fontStyle: "italic" }}>
-                                Feedback pending from interviewer.
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Past Recommendations if any */}
-                  {candidateDetail.recommendations && candidateDetail.recommendations.length > 0 && (
-                    <div>
-                      <h5 style={{ fontSize: "14px", fontWeight: 700, marginBottom: "8px" }}>
-                        Previous Recommendations
-                      </h5>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                        {candidateDetail.recommendations.map((rec, i) => (
-                          <div key={i} style={{ padding: "8px 12px", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", fontSize: "12px" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                              <strong style={{ textTransform: "uppercase", color: rec.decision === "select" ? "#059669" : "#dc2626" }}>
-                                {rec.decision}
-                              </strong>
-                              <span style={{ color: "var(--muted-foreground)" }}>
-                                {new Date(rec.createdAt).toLocaleDateString()}
-                              </span>
-                            </div>
-                            <p>{rec.comments}</p>
-                          </div>
-                        ))}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("pending")}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-amber-700 transition shrink-0"
+                      >
+                        Review Pending Candidates →
+                      </button>
                     </div>
                   )}
 
-                  {/* Recommendation Submission Form */}
-                  <form onSubmit={handleSubmitRecommendation} style={{ borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
-                    <h5 style={{ fontSize: "14px", fontWeight: 700, marginBottom: "12px" }}>
-                      Submit Hiring Manager Recommendation
-                    </h5>
-
-                    <div className="form-group" style={{ marginBottom: "12px" }}>
-                      <label className="form-label">Decision</label>
-                      <div style={{ display: "flex", gap: "10px" }}>
-                        <label style={{
-                          flex: 1,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          padding: "10px",
-                          border: `1.5px solid ${recommendDecision === "select" ? "#10b981" : "var(--border)"}`,
-                          borderRadius: "var(--radius-md)",
-                          cursor: "pointer",
-                          background: recommendDecision === "select" ? "#ecfdf5" : "#ffffff",
-                          fontSize: "13px",
-                          fontWeight: 600,
-                          color: recommendDecision === "select" ? "#065f46" : "var(--foreground)"
-                        }}>
-                          <input
-                            type="radio"
-                            name="decision"
-                            value="select"
-                            checked={recommendDecision === "select"}
-                            onChange={() => setRecommendDecision("select")}
-                          />
-                          <ThumbsUp size={16} style={{ color: "#10b981" }} />
-                          <span>Recommend Selection</span>
-                        </label>
-
-                        <label style={{
-                          flex: 1,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          padding: "10px",
-                          border: `1.5px solid ${recommendDecision === "reject" ? "#ef4444" : "var(--border)"}`,
-                          borderRadius: "var(--radius-md)",
-                          cursor: "pointer",
-                          background: recommendDecision === "reject" ? "#fef2f2" : "#ffffff",
-                          fontSize: "13px",
-                          fontWeight: 600,
-                          color: recommendDecision === "reject" ? "#991b1b" : "var(--foreground)"
-                        }}>
-                          <input
-                            type="radio"
-                            name="decision"
-                            value="reject"
-                            checked={recommendDecision === "reject"}
-                            onChange={() => setRecommendDecision("reject")}
-                          />
-                          <ThumbsDown size={16} style={{ color: "#ef4444" }} />
-                          <span>Recommend Rejection</span>
-                        </label>
-                      </div>
+                  {/* Recent Activity Table */}
+                  <div className="rounded-2xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
+                    <div className="flex items-center justify-between border-b border-slate-100 p-5">
+                      <h2 className="text-sm font-bold text-slate-900">
+                        Candidates Awaiting Decision
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("pending")}
+                        className="text-xs font-bold text-blue-600 hover:text-blue-700"
+                      >
+                        View All ({pendingCandidates.length})
+                      </button>
                     </div>
 
-                    <div className="form-group" style={{ marginBottom: "16px" }}>
-                      <label className="form-label" htmlFor="eval-comments">
-                        <span>Evaluation Notes & Justification</span>
-                        <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Required</span>
-                      </label>
-                      <textarea
-                        id="eval-comments"
-                        rows={3}
-                        required
-                        className="form-textarea"
-                        placeholder="Provide detailed feedback on technical fit, seniority, and recommendation rationale..."
-                        value={recommendComments}
-                        onChange={(e) => setRecommendComments(e.target.value)}
+                    {loading ? (
+                      <Spinner message="Loading candidates..." />
+                    ) : pendingCandidates.length > 0 ? (
+                      <div className="divide-y divide-slate-100">
+                        {pendingCandidates.slice(0, 5).map((cand) => {
+                          const latestIv = cand.interviews?.[cand.interviews.length - 1] || {};
+                          return (
+                            <div
+                              key={cand._id}
+                              className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 hover:bg-slate-50/60 transition"
+                            >
+                              <div className="min-w-0">
+                                <h3 className="text-sm font-bold text-slate-900 truncate">
+                                  {cand.name}
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                  {cand.position || "Applicant"} · Round:{" "}
+                                  <span className="font-semibold text-slate-700">
+                                    {latestIv.roundName || "Interview"}
+                                  </span>
+                                </p>
+                              </div>
+
+                              <div className="flex items-center gap-3">
+                                {latestIv.score !== undefined && (
+                                  <span className="rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
+                                    Score: {latestIv.score}/100
+                                  </span>
+                                )}
+                                {latestIv.rating && (
+                                  <span className="flex items-center gap-1 rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
+                                    <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                                    {latestIv.rating}/5
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => openReview(cand, "review")}
+                                  className="rounded-xl bg-blue-600 px-4 py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-blue-700 transition"
+                                >
+                                  Review
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="p-8">
+                        <EmptyState
+                          title="No pending decisions"
+                          message="All evaluated candidates have been reviewed. New candidates will appear once interviewers complete their evaluations."
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: PENDING DECISIONS */}
+              {activeTab === "pending" && (
+                <div className="rounded-2xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden space-y-4 p-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                    <div>
+                      <h2 className="text-sm font-bold text-slate-900">
+                        Pending Decisions ({pendingCandidates.length})
+                      </h2>
+                      <p className="text-xs text-slate-500">
+                        Candidates whose interviews are completed and are awaiting your selection decision.
+                      </p>
+                    </div>
+
+                    <div className="relative w-full sm:w-64">
+                      <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search candidate or position..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 pl-9 pr-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none"
                       />
                     </div>
+                  </div>
 
-                    <button
-                      type="submit"
-                      className="auth-btn-primary"
-                      disabled={submittingRecommend}
-                    >
-                      {submittingRecommend ? (
-                        <span>Submitting Evaluation...</span>
-                      ) : (
-                        <>
-                          <CheckCircle2 size={16} />
-                          <span>Submit Hiring Decision</span>
-                        </>
-                      )}
-                    </button>
-                  </form>
-                </>
-              ) : null}
-            </div>
+                  {loading ? (
+                    <Spinner message="Loading candidates..." />
+                  ) : filterList(pendingCandidates).length > 0 ? (
+                    <div className="divide-y divide-slate-100">
+                      {filterList(pendingCandidates).map((cand) => {
+                        const latestIv = cand.interviews?.[cand.interviews.length - 1] || {};
+                        const interviewer = latestIv.interviewerId || {};
+                        const interviewerName = interviewer.name || interviewer.email || "Interviewer";
 
-            <footer className="modal-footer">
+                        return (
+                          <div
+                            key={cand._id}
+                            className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 py-4 hover:bg-slate-50/60 transition rounded-xl px-3"
+                          >
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-sm font-bold text-slate-900 truncate">
+                                  {cand.name}
+                                </h3>
+                                <span className="rounded-full bg-purple-100 px-2.5 py-0.5 text-[11px] font-semibold text-purple-700">
+                                  Interview Completed
+                                </span>
+                              </div>
+
+                              <p className="text-xs text-slate-500 mt-1">
+                                Position: <span className="font-semibold text-slate-700">{cand.position || "Applicant"}</span> · Round:{" "}
+                                <span className="font-semibold text-slate-700">{latestIv.roundName || "Round 1"}</span>
+                              </p>
+
+                              <p className="text-[11px] text-slate-400 mt-1">
+                                Interviewer: {interviewerName} · Email: {cand.email || "—"}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-3 shrink-0 self-end lg:self-auto">
+                              {latestIv.score !== undefined && (
+                                <span className="rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
+                                  Score: {latestIv.score}/100
+                                </span>
+                              )}
+                              {latestIv.rating && (
+                                <span className="flex items-center gap-1 rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
+                                  <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                                  {latestIv.rating}/5
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => openReview(cand, "review")}
+                                className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white shadow-2xs hover:bg-blue-700 transition"
+                              >
+                                Review Candidate
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      title="No candidates found"
+                      message="No candidates currently match this filter."
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* TAB 3: DECISIONS MADE */}
+              {activeTab === "decisions" && (
+                <div className="rounded-2xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden space-y-4 p-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                    <div>
+                      <h2 className="text-sm font-bold text-slate-900">
+                        Decisions Made ({decisionsMade.length})
+                      </h2>
+                      <p className="text-xs text-slate-500">
+                        History of candidates you have evaluated and marked as Selected or Rejected.
+                      </p>
+                    </div>
+
+                    <div className="relative w-full sm:w-64">
+                      <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search candidate or role..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 pl-9 pr-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {loading ? (
+                    <Spinner message="Loading decisions history..." />
+                  ) : filterList(decisionsMade).length > 0 ? (
+                    <div className="divide-y divide-slate-100">
+                      {filterList(decisionsMade).map((cand) => {
+                        const isSelected =
+                          cand.application?.status === "selected" ||
+                          cand.hiringRecommendation?.status === "select";
+
+                        return (
+                          <div
+                            key={cand._id}
+                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 py-4 hover:bg-slate-50/60 transition rounded-xl px-3"
+                          >
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-sm font-bold text-slate-900 truncate">
+                                  {cand.name}
+                                </h3>
+                                <span
+                                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                                    isSelected
+                                      ? "bg-emerald-100 text-emerald-800"
+                                      : "bg-rose-100 text-rose-800"
+                                  }`}
+                                >
+                                  {isSelected ? "Selected" : "Rejected"}
+                                </span>
+                              </div>
+
+                              <p className="text-xs text-slate-500 mt-1">
+                                Position: <span className="font-semibold text-slate-700">{cand.position || "Applicant"}</span> · Email: {cand.email || "—"}
+                              </p>
+
+                              {cand.hiringRecommendation?.comments && (
+                                <p className="mt-2 text-xs text-slate-600 italic bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                                  "{cand.hiringRecommendation.comments}"
+                                </p>
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => openReview(cand, "view")}
+                              className="rounded-xl border border-slate-200 bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition shrink-0 self-end sm:self-auto"
+                            >
+                              View Details
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      title="No decisions recorded"
+                      message="You haven't made any selection decisions yet."
+                    />
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </main>
+      </div>
+
+      {/* REVIEW & DECISION MODAL */}
+      {reviewCandidate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/60 p-4 backdrop-blur-xs">
+          <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl transition-all">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  {modalMode === "review" ? "Review Candidate & Submit Decision" : "Candidate Evaluation Details"}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {reviewCandidate.name} · {reviewCandidate.position || "Applicant"}
+                </p>
+              </div>
               <button
                 type="button"
-                className="btn-action-outline"
-                onClick={() => setSelectedCandidate(null)}
+                onClick={() => setReviewCandidate(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
               >
-                Close
+                <X className="h-4 w-4" />
               </button>
-            </footer>
+            </div>
+
+            <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+              {/* Candidate Info Grid */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <span className="text-slate-400 font-medium">Candidate</span>
+                    <p className="font-bold text-slate-900 mt-0.5">{reviewCandidate.name}</p>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 font-medium">Email</span>
+                    <p className="font-bold text-slate-900 mt-0.5 truncate">{reviewCandidate.email}</p>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 font-medium">Job Type</span>
+                    <p className="font-bold text-slate-900 mt-0.5 capitalize">
+                      {reviewCandidate.application?.jobType || "Full-time"}
+                    </p>
+                  </div>
+                </div>
+
+                {reviewCandidate.application?.resumeUrl && (
+                  <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs">
+                    <span className="text-slate-600 font-medium">Submitted Resume</span>
+                    <a
+                      href={reviewCandidate.application.resumeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 font-bold text-blue-600 hover:underline"
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      View Resume PDF
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {/* Interview Summary */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                  Interviewer Evaluations ({reviewCandidate.interviews?.length || 0})
+                </h4>
+
+                {reviewCandidate.interviews && reviewCandidate.interviews.length > 0 ? (
+                  <div className="space-y-3">
+                    {reviewCandidate.interviews.map((iv, idx) => {
+                      const interviewer = iv.interviewerId || {};
+                      const interviewerName = interviewer.name || interviewer.email || "Interviewer";
+
+                      return (
+                        <div
+                          key={iv._id || idx}
+                          className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-2xs"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-xs font-bold text-slate-900">
+                                {iv.roundName || `Round ${idx + 1}`}
+                              </p>
+                              <p className="text-[11px] text-slate-400">
+                                Evaluator: <span className="font-medium text-slate-600">{interviewerName}</span>
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                              {iv.score !== undefined && (
+                                <span className="rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
+                                  {iv.score}/100
+                                </span>
+                              )}
+                              {iv.rating && (
+                                <span className="flex items-center gap-1 rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
+                                  <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                                  {iv.rating}/5
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {iv.feedback && (
+                            <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-700 leading-relaxed border border-slate-100">
+                              <span className="font-semibold text-slate-500 block mb-1">Feedback:</span>
+                              "{iv.feedback}"
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">
+                    No completed interview feedback recorded yet.
+                  </div>
+                )}
+              </div>
+
+              {/* Decision Form or Read-only view */}
+              {modalMode === "review" ? (
+                <form onSubmit={handleSubmitDecision} className="space-y-4 pt-4 border-t border-slate-200">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                    Your Selection Decision
+                  </h4>
+
+                  {/* Decision Radio Options */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <label
+                      className={`flex cursor-pointer items-center justify-between rounded-xl border p-4 transition ${
+                        decision === "select"
+                          ? "border-emerald-600 bg-emerald-50/60 ring-2 ring-emerald-500/20"
+                          : "border-slate-200 bg-white hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="radio"
+                          name="decision"
+                          value="select"
+                          checked={decision === "select"}
+                          onChange={() => setDecision("select")}
+                          className="h-4 w-4 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">Select Candidate</p>
+                          <p className="text-[11px] text-slate-500">Approve for offer generation</p>
+                        </div>
+                      </div>
+                    </label>
+
+                    <label
+                      className={`flex cursor-pointer items-center justify-between rounded-xl border p-4 transition ${
+                        decision === "reject"
+                          ? "border-rose-600 bg-rose-50/60 ring-2 ring-rose-500/20"
+                          : "border-slate-200 bg-white hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="radio"
+                          name="decision"
+                          value="reject"
+                          checked={decision === "reject"}
+                          onChange={() => setDecision("reject")}
+                          className="h-4 w-4 text-rose-600 focus:ring-rose-500"
+                        />
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">Reject Candidate</p>
+                          <p className="text-[11px] text-slate-500">Decline application</p>
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Comments textarea */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-slate-800">
+                      Recommendation Comments & Notes <span className="text-rose-500">*</span>
+                    </label>
+                    <textarea
+                      rows={3}
+                      required
+                      value={comments}
+                      onChange={(e) => setComments(e.target.value)}
+                      placeholder="e.g. Strong technical fit, excellent architectural knowledge, approved for offer..."
+                      className="w-full rounded-xl border border-slate-300 p-3 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setReviewCandidate(null)}
+                      className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className={`inline-flex items-center gap-1.5 rounded-xl px-5 py-2 text-xs font-bold text-white shadow-xs transition disabled:opacity-50 ${
+                        decision === "select"
+                          ? "bg-emerald-600 hover:bg-emerald-700"
+                          : "bg-rose-600 hover:bg-rose-700"
+                      }`}
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                      {submitting ? "Submitting Decision..." : "Submit Decision"}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="space-y-3 pt-3 border-t border-slate-200">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                    Recorded Decision
+                  </h4>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-500">Decision Outcome:</span>
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-bold capitalize ${
+                          reviewCandidate.hiringRecommendation?.status === "select" ||
+                          reviewCandidate.application?.status === "selected"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-rose-100 text-rose-800"
+                        }`}
+                      >
+                        {reviewCandidate.hiringRecommendation?.status || reviewCandidate.application?.status}
+                      </span>
+                    </div>
+                    {reviewCandidate.hiringRecommendation?.comments && (
+                      <p className="text-xs text-slate-700 italic pt-1 leading-relaxed">
+                        "{reviewCandidate.hiringRecommendation.comments}"
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setReviewCandidate(null)}
+                      className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }

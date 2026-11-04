@@ -205,7 +205,7 @@ export default function MyLetters() {
                     </td>
 
                     <td className="px-4 py-4 text-sm text-slate-600">
-                      {getLetterType(letter.letterType)}
+                      {getLetterType(letter.type)}
                     </td>
 
                     <td className="px-4 py-4 text-sm text-slate-600">
@@ -238,4 +238,3 @@ export default function MyLetters() {
     </div>
   );
 }
-

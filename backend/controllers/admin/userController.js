@@ -1,4 +1,3 @@
-const bcrypt = require("bcryptjs");
 const { User } = require("../../models");
 const { recordAuditLog } = require("../../utils/auditLogger");
 
@@ -28,8 +27,6 @@ const getAllUsers = async (req, res) => {
     const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
     const totalUsers = await User.countDocuments(query);
     const users = await User.find(query)
-      .populate("candidateId", "position status")
-      .populate("employeeId", "empId type department designation")
       .populate("hiringManagerId", "name email")
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -75,16 +72,12 @@ const createUser = async (req, res) => {
       });
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
-
     const newUser = await User.create({
       name: name.trim(),
       email: email.toLowerCase().trim(),
-      passwordHash,
+      password,
       role,
       hiringManagerId: hiringManagerId || null,
-      candidateId: candidateId || null,
-      employeeId: employeeId || null,
       isActive: true,
     });
 
@@ -123,8 +116,6 @@ const createUser = async (req, res) => {
 const getUserById = async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
-      .populate("candidateId")
-      .populate("employeeId")
       .populate("hiringManagerId", "name email");
 
     if (!user) {
@@ -221,7 +212,7 @@ const updateUser = async (req, res) => {
         if (!user.track && (position || user.position)) {
           user.track = position || user.position;
         }
-        user.onboardingStatus = "In Progress";
+        user.onboardingStatus = "in_progress";
       } else if (normalizedRole === "candidate") {
         user.selectedAs = null;
       }
@@ -233,9 +224,7 @@ const updateUser = async (req, res) => {
     if (position !== undefined) user.position = position.trim();
     if (hiringManagerId !== undefined) user.hiringManagerId = hiringManagerId || null;
     if (password && typeof password === "string" && password.trim()) {
-      const hash = await bcrypt.hash(password.trim(), 10);
-      user.password = hash;
-      user.passwordHash = hash;
+      user.password = password.trim();
     }
 
     await user.save();

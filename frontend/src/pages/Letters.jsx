@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 
 import { apiRequest } from "../api";
+import { useAlert } from "../components/AlertProvider.jsx";
+import { useSearchParams } from "react-router-dom";
 
 const LETTER_TYPES = [
   "Offer Letter",
@@ -51,7 +53,9 @@ const STATUS_STYLES = {
 const INITIAL_FORM = {
   employeeId: "",
   letterType: "",
-  template: "default",
+  title: "",
+  placeholderKey: "",
+  placeholderValue: "",
 };
 
 function getId(value) {
@@ -188,6 +192,8 @@ function Modal({
 }
 
 export default function Letters() {
+  const alert = useAlert();
+  const [searchParams] = useSearchParams();
   const [letters, setLetters] = useState([]);
   const [employees, setEmployees] = useState([]);
 
@@ -233,15 +239,18 @@ export default function Letters() {
 
   const fetchEmployees = useCallback(async () => {
     try {
-      const result = await apiRequest("/employees");
-
-      const list = Array.isArray(result.data)
-        ? result.data
-        : Array.isArray(result.employees)
-          ? result.employees
-          : [];
-
-      setEmployees(list);
+      const results = await Promise.all([
+        apiRequest("/employees?role=intern"),
+        apiRequest("/employees?role=employee"),
+      ]);
+      const list = results.flatMap((result) =>
+        Array.isArray(result.data)
+          ? result.data
+          : Array.isArray(result.employees)
+            ? result.employees
+            : []
+      );
+      setEmployees(list.filter((employee) => ["intern", "employee"].includes(employee.role)));
     } catch (err) {
       console.error("Failed to fetch employees:", err);
     }
@@ -251,6 +260,14 @@ export default function Letters() {
     fetchLetters();
     fetchEmployees();
   }, [fetchLetters, fetchEmployees]);
+
+  useEffect(() => {
+    const employeeId = searchParams.get("employeeId");
+    if (employeeId) {
+      setCreateForm((current) => ({ ...current, employeeId }));
+      setShowCreate(true);
+    }
+  }, [searchParams]);
 
   const filteredLetters = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -262,8 +279,8 @@ export default function Letters() {
         statusFilter === "All" || status === statusFilter;
 
       const searchText = [
-        letter.letterType,
-        letter.template,
+        letter.title,
+        letter.templateId?.name,
         status,
         getLetterEmployeeName(letter),
         letter.employeeId?.empId,
@@ -331,7 +348,10 @@ export default function Letters() {
         body: JSON.stringify({
           employeeId: createForm.employeeId,
           letterType: createForm.letterType,
-          template: createForm.template || "default",
+          title: createForm.title.trim() || undefined,
+          placeholders: createForm.placeholderKey.trim()
+            ? { [createForm.placeholderKey.trim()]: createForm.placeholderValue }
+            : {},
         }),
       });
 
@@ -378,7 +398,7 @@ export default function Letters() {
 
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `${letter.letterType || "Letter"}-${letter.employeeId?.empId || id}.pdf`;
+      anchor.download = `${letter.title || "Letter"}-${letter.employeeId?.empId || id}.pdf`;
 
       document.body.appendChild(anchor);
       anchor.click();
@@ -397,11 +417,14 @@ export default function Letters() {
   async function handleSubmitLetter(letter) {
     const id = getId(letter);
 
-    if (
-      !window.confirm(
-        "Submit this letter for Admin approval? Once submitted, it cannot be regenerated until the approval is reviewed."
-      )
-    ) {
+    const confirmed = await alert.confirm({
+      title: "Submit letter for approval?",
+      message:
+        "Once submitted, it cannot be regenerated until the approval is reviewed.",
+      type: "warning",
+      confirmText: "Submit",
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -480,11 +503,14 @@ export default function Letters() {
   async function handleRegenerate(letter) {
     const id = getId(letter);
 
-    if (
-      !window.confirm(
-        "Regenerate this letter PDF? This will create a new version and reset the letter status to Draft."
-      )
-    ) {
+    const confirmed = await alert.confirm({
+      title: "Regenerate letter?",
+      message:
+        "This will create a new PDF version and reset the letter status to Draft.",
+      type: "warning",
+      confirmText: "Regenerate",
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -502,7 +528,7 @@ export default function Letters() {
 
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `${letter.letterType || "Letter"}-v${(letter.version || 1) + 1}.pdf`;
+      anchor.download = `${letter.title || "Letter"}-v${(letter.version || 1) + 1}.pdf`;
 
       document.body.appendChild(anchor);
       anchor.click();
@@ -527,11 +553,13 @@ export default function Letters() {
       return;
     }
 
-    if (
-      !window.confirm(
-        `Delete the draft ${letter.letterType || "letter"} for ${getLetterEmployeeName(letter)}?`
-      )
-    ) {
+    const confirmed = await alert.confirm({
+      title: "Delete draft letter?",
+      message: `Delete the draft ${letter.title || "letter"} for ${getLetterEmployeeName(letter)}?`,
+      type: "danger",
+      confirmText: "Delete",
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -797,11 +825,11 @@ export default function Letters() {
 
                             <div className="min-w-0">
                               <p className="max-w-64 truncate text-sm font-semibold text-slate-800">
-                                {letter.letterType || "Untitled Letter"}
+                                {letter.title || "Untitled Letter"}
                               </p>
 
                               <p className="mt-1 text-xs text-slate-500">
-                                {letter.template || "default"} template
+                                {letter.templateId?.name || "default"} template
                               </p>
                             </div>
                           </div>
@@ -1014,28 +1042,35 @@ export default function Letters() {
               </select>
             </div>
 
-            <div>
-              <label
-                htmlFor="template"
-                className="mb-2 block text-sm font-semibold text-slate-700"
-              >
-                Template
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-slate-700">Title</span>
+              <input
+                value={createForm.title}
+                onChange={(event) => updateFormField("title", event.target.value)}
+                placeholder="e.g. Appointment Letter"
+                className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
+              />
+            </label>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold text-slate-700">Additional placeholder key</span>
+                <input
+                  value={createForm.placeholderKey}
+                  onChange={(event) => updateFormField("placeholderKey", event.target.value)}
+                  placeholder="e.g. officeLocation"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
+                />
               </label>
-
-              <select
-                id="template"
-                value={createForm.template}
-                onChange={(event) =>
-                  updateFormField("template", event.target.value)
-                }
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-              >
-                <option value="default">Default</option>
-              </select>
-
-              <p className="mt-2 text-xs text-slate-500">
-                The backend currently supports the default template.
-              </p>
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold text-slate-700">Placeholder value</span>
+                <input
+                  value={createForm.placeholderValue}
+                  onChange={(event) => updateFormField("placeholderValue", event.target.value)}
+                  placeholder="e.g. Bengaluru"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
+                />
+              </label>
             </div>
 
             <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4">
@@ -1097,7 +1132,7 @@ export default function Letters() {
 
               <div className="min-w-0 flex-1">
                 <p className="break-words font-semibold text-slate-900">
-                  {selectedLetter.letterType || "Untitled Letter"}
+                  {selectedLetter.title || "Untitled Letter"}
                 </p>
 
                 <p className="mt-1 text-sm text-slate-500">
@@ -1142,7 +1177,7 @@ export default function Letters() {
 
               <DetailItem
                 label="Template"
-                value={selectedLetter.template || "default"}
+                value={selectedLetter.templateId?.name || "default"}
               />
 
               <DetailItem
@@ -1237,7 +1272,7 @@ export default function Letters() {
               </p>
 
               <p className="mt-1 text-sm font-semibold text-slate-800">
-                {rejectLetter.letterType}
+                {rejectLetter.title}
               </p>
 
               <p className="mt-1 text-xs text-slate-500">

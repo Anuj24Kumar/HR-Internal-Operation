@@ -1,247 +1,231 @@
-const Candidate = require('../../models/Candidate');
-const User = require('../../models/User');
-const Application = require('../../models/Application');
-const HiringRecommendation = require('../../models/hiring-manager/HiringRecommendation');
+const mongoose = require("mongoose");
+const { User, Application, Interview, HiringRecommendation, InterviewFeedback } = require("../../models");
+const { notify, notifyMany } = require("../../utils/notificationHelper");
+const { recordAuditLog } = require("../../utils/auditLogger");
 
-const userIdOf = (req) => req.user?._id || req.user?.id;
+const userIdOf = (req) => req.user?.id || req.user?._id;
 
-function assignedToManagerQuery(req) {
-  const uid = userIdOf(req);
+async function assignedToManagerQuery(hmId) {
+  // Candidates whose interview is completed AND user is candidate
+  const completedCandidateIds = await Interview.find({ status: "completed" }).distinct("candidateId");
   return {
-    isArchived: { $ne: true },
-    $or: [
-      { hiringManagerId: uid },
-      { hiringManagerId: null },
-      { hiringManagerId: { $exists: false } },
-    ],
-    // Only candidates whose interview has been completed (interviewer provided rating/score/feedback)
-    // or who are already selected
-    $and: [
-      {
-        $or: [
-          { 'interviews.status': 'completed' },
-          { 'interviews.rating': { $ne: null } },
-          { 'interviews.score': { $ne: null } },
-          { 'interviews.feedback': { $ne: '' } },
-          { status: { $in: ['selected', 'Selected', 'offer', 'Offer'] } },
-          { 'hiringRecommendation.status': 'select' },
-        ]
-      }
-    ]
+    _id: { $in: completedCandidateIds },
+    role: "candidate",
+    isActive: true,
   };
 }
 
-function stripSensitive(candidate) {
-  if (!candidate) return candidate;
-  const obj = typeof candidate.toObject === 'function' ? candidate.toObject() : { ...candidate };
-  delete obj.salary;
-  delete obj.ctc;
-  delete obj.offer;
-  delete obj.offerDetails;
-  delete obj.salaryDetails;
-  if (Array.isArray(obj.interviews)) {
-    obj.interviews = obj.interviews.map((round) => {
-      const item = { ...round };
-      delete item.salary;
-      delete item.offer;
-      delete item.offerDetails;
-      return item;
+exports.getDashboard = async (req, res) => {
+  try {
+    const applications = await Application.find({ status: { $in: ["interview", "selected"] } }).lean();
+    const openRoles = new Set(applications.map((a) => a.position).filter(Boolean)).size;
+    const pipelineCandidates = applications.length;
+
+    const now = new Date();
+    const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const interviewsThisWeek = await Interview.countDocuments({
+      scheduledAt: { $gte: now, $lte: nextWeek },
     });
+
+    return res.json({
+      success: true,
+      data: { openRoles, pipelineCandidates, interviewsThisWeek },
+    });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
   }
-  return obj;
-}
+};
 
-exports.getDashboard = async (req, res, next) => {
+exports.getRoles = async (req, res) => {
   try {
-    const query = assignedToManagerQuery(req);
-    const [openRoles, candidateCount, interviewsThisWeek] = await Promise.all([
-      Candidate.distinct('position', { ...query, status: { $nin: ['selected', 'rejected'] } }),
-      Candidate.countDocuments(query),
-      Candidate.countDocuments({
-        ...query,
-        interviews: {
-          $elemMatch: {
-            scheduledAt: {
-              $gte: startOfWeek(),
-              $lt: endOfWeek()
-            }
-          }
-        }
-      }),
+    const rolesAgg = await Application.aggregate([
+      { $match: { status: { $in: ["interview", "selected"] } } },
+      {
+        $group: {
+          _id: "$position",
+          candidateCount: { $sum: 1 },
+          openCandidateCount: {
+            $sum: { $cond: [{ $eq: ["$status", "interview"] }, 1, 0] },
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          role: "$_id",
+          candidateCount: 1,
+          openCandidateCount: 1,
+        },
+      },
     ]);
+    return res.json({ success: true, data: rolesAgg });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+exports.listCandidates = async (req, res) => {
+  try {
+    const query = await assignedToManagerQuery(userIdOf(req));
+    const candidates = await User.find(query)
+      .select("name email position phone hiringRecommendation")
+      .lean();
+
+    // For each candidate, attach latest Application + completed Interview summary
+    const enriched = await Promise.all(
+      candidates.map(async (c) => {
+        const app = await Application.findOne({ candidateId: c._id })
+          .sort({ createdAt: -1 })
+          .lean();
+        const interviews = await Interview.find({ candidateId: c._id, status: "completed" })
+          .populate("interviewerId", "name email")
+          .lean();
+        return { ...c, application: app, interviews };
+      })
+    );
+
+    // Filter: show candidates awaiting decision ('interview') or already decided ('selected', 'rejected')
+    const filtered = enriched.filter(
+      (c) => c.application && ["interview", "selected", "rejected"].includes(c.application.status)
+    );
+
+    return res.json({ success: true, data: filtered });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+exports.getCandidate = async (req, res) => {
+  try {
+    const candidate = await User.findById(req.params.id).select("-password").lean();
+    if (!candidate || candidate.role !== "candidate") {
+      return res.status(404).json({ success: false, message: "Candidate not found" });
+    }
+    const application = await Application.findOne({ candidateId: candidate._id })
+      .sort({ createdAt: -1 })
+      .lean();
+    const interviews = await Interview.find({ candidateId: candidate._id })
+      .populate("interviewerId", "name email")
+      .sort({ scheduledAt: -1 })
+      .lean();
+    const recommendations = await HiringRecommendation.find({ candidateId: candidate._id })
+      .populate("hiringManagerId", "name email")
+      .sort({ createdAt: -1 })
+      .lean();
+
     return res.json({
       success: true,
-      data: { openRoles: openRoles.length, pipelineCandidates: candidateCount,
-        interviewsThisWeek }
+      data: {
+        ...candidate,
+        application,
+        interviews,
+        recommendations,
+      },
     });
-  } catch (err) { next(err); }
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
+  }
 };
 
-function startOfWeek() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  return d;
-}
-function endOfWeek() {
-  const d = startOfWeek();
-  d.setDate(d.getDate() + 7);
-  return d;
-}
-
-exports.getRoles = async (req, res, next) => {
+exports.recommendCandidate = async (req, res) => {
   try {
-    const rows = await Candidate.aggregate([
-      { $match: assignedToManagerQuery(req) },
-      { $group: {
-        _id: '$position',
-        department: { $first: '$department' },
-        candidateCount: { $sum: 1 },
-        openCandidateCount: {
-          $sum: { $cond: [{ $in: ['$status', ['selected', 'rejected']] }, 0, 1] }
-        }
-      }},
-      { $sort: { _id: 1 } }
-    ]);
-    return res.json({ success: true, data: rows.map(r => ({
-      role: r._id, department: r.department,
-      candidateCount: r.candidateCount, openCandidateCount: r.openCandidateCount
-    })) });
-  } catch (err) { next(err); }
-};
+    const { decision, comments } = req.body;
+    if (!["select", "reject"].includes(decision)) {
+      return res.status(400).json({ success: false, message: "decision must be select or reject" });
+    }
+    if (!comments || comments.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "comments are required" });
+    }
 
-exports.listCandidates = async (req, res, next) => {
-  try {
-    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
-    const filter = assignedToManagerQuery(req);
-    if (req.query.status) filter.status = req.query.status;
-    if (req.query.position) filter.position = new RegExp(escapeRegex(req.query.position), 'i');
-    const [rows, total] = await Promise.all([
-      Candidate.find(filter)
-        .select('-salary -ctc -offer -offerDetails -salaryDetails')
-        .sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
-      Candidate.countDocuments(filter)
-    ]);
-    return res.json({
-      success: true,
-      data: rows.map(stripSensitive),
-      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) }
+    const candidate = await User.findById(req.params.id);
+    if (!candidate || candidate.role !== "candidate") {
+      return res.status(404).json({ success: false, message: "Candidate not found" });
+    }
+
+    const application = await Application.findOne({ candidateId: candidate._id, status: "interview" }).sort({
+      createdAt: -1,
     });
-  } catch (err) { next(err); }
-};
+    if (!application) {
+      return res.status(400).json({ success: false, message: "Candidate has no application awaiting decision" });
+    }
 
-exports.getCandidate = async (req, res, next) => {
-  try {
-    const candidate = await Candidate.findOne({
-      _id: req.params.id,
-      ...assignedToManagerQuery(req)
-    })
-      .select('-salary -ctc -offer -offerDetails -salaryDetails')
-      .populate({ path: 'interviews.interviewerId', select: 'name email' });
-    if (!candidate) {
-      return res.status(404).json({ success: false,
-        error: { code: 'NOT_FOUND', message: 'Candidate not found or not assigned to you' } });
-    }
-    const latestRecommendations = await HiringRecommendation.find({ candidateId: candidate._id })
-      .populate('hiringManagerId', 'name').sort({ createdAt: -1 }).limit(20).lean();
-    return res.json({ success: true, data: {
-      ...stripSensitive(candidate),
-      recommendations: latestRecommendations
-    }});
-  } catch (err) { next(err); }
-};
-
-exports.recommendCandidate = async (req, res, next) => {
-  try {
-    const decision = String(req.body.decision || '').toLowerCase();
-    const comments = String(req.body.comments || '').trim();
-    if (!['select', 'reject'].includes(decision) || !comments) {
-      return res.status(400).json({ success: false, error: {
-        code: 'VALIDATION_ERROR', message: 'decision must be select or reject and comments are required'
-      }});
-    }
-    const candidate = await Candidate.findOne({
-      _id: req.params.id, ...assignedToManagerQuery(req)
-    });
-    if (!candidate) {
-      return res.status(404).json({ success: false, error: {
-        code: 'NOT_FOUND', message: 'Candidate not found or not accessible'
-      }});
-    }
-    const recommendation = await HiringRecommendation.create({
+    const completedInterview = await Interview.findOne({
       candidateId: candidate._id,
-      hiringManagerId: userIdOf(req),
+      applicationId: application._id,
+      status: "completed",
+    });
+    if (!completedInterview) {
+      return res.status(400).json({ success: false, message: "No completed interview to evaluate" });
+    }
+
+    const uid = userIdOf(req);
+    const rec = await HiringRecommendation.create({
+      candidateId: candidate._id,
+      applicationId: application._id,
+      hiringManagerId: uid,
       decision,
-      comments
+      comments: comments.trim(),
+      interviewId: completedInterview._id,
     });
 
     candidate.hiringRecommendation = {
       status: decision,
-      comments,
+      comments: comments.trim(),
       recommendedAt: new Date(),
-      recommendedBy: userIdOf(req),
+      recommendedBy: uid,
     };
-
-    let isIntern = false;
-    let newRole = 'employee';
-    if (decision === 'select') {
-      candidate.status = 'selected';
-      isIntern = String(candidate.jobType || candidate.position || '').toLowerCase().includes('intern');
-      newRole = isIntern ? 'intern' : 'employee';
-      candidate.selectedAs = newRole;
-      candidate.role = newRole;
-    } else if (decision === 'reject') {
-      candidate.status = 'rejected';
-    }
     await candidate.save();
 
-    // Sync Application model
-    const candidateUserId = candidate.user || candidate.userId || candidate._id;
-    const application = await Application.findOne({
-      $or: [
-        { candidateId: candidateUserId },
-        { email: candidate.email ? candidate.email.toLowerCase() : null }
-      ]
-    }).sort({ appliedAt: -1 });
-
-    if (application) {
-      if (decision === 'select') {
-        application.status = 'Selected';
-        for (const event of application.timeline) {
-          const stage = String(event.stage || '').trim().toLowerCase();
-          if (stage === 'applied' || stage === 'interview') {
-            event.completed = true;
-          } else if (stage === 'selected') {
-            event.completed = true;
-            event.date = new Date();
-            event.description = comments || `Candidate selected for ${isIntern ? 'Internship' : 'Full-time'}.`;
-          }
-        }
-      } else {
-        application.status = 'Rejected';
+    if (decision === "select") {
+      application.status = "selected";
+      const tl = application.timeline.find((t) => t.stage === "selected");
+      if (tl) {
+        tl.completed = true;
+        tl.date = new Date();
       }
-      await application.save();
-    }
-
-    // AUTOMATIC ROLE CONVERSION:
-    // If selected, automatically convert user role in User collection
-    if (decision === 'select') {
-      const userDoc = await User.findById(candidateUserId) || await User.findOne({ email: candidate.email.toLowerCase() });
-      if (userDoc) {
-        userDoc.role = newRole;
-        userDoc.status = 'active';
-        userDoc.isActive = true;
-        userDoc.selectedAs = newRole;
-        await userDoc.save();
+    } else {
+      application.status = "rejected";
+      const tl = application.timeline.find((t) => t.stage === "rejected");
+      if (tl) {
+        tl.completed = true;
+        tl.date = new Date();
       }
     }
+    await application.save();
 
-    return res.status(201).json({ success: true, data: recommendation,
-      message: `Hiring recommendation submitted: Candidate ${decision === 'select' ? 'selected and converted to ' + newRole : 'rejected'}` });
-  } catch (err) { next(err); }
+    // Lock the interview feedback
+    await InterviewFeedback.updateMany(
+      { roundId: completedInterview._id },
+      { $set: { lockedAt: new Date() } }
+    );
+
+    // Notify HR (and candidate)
+    const hrs = await User.find({ role: "hr", isActive: true }).select("_id");
+    await notifyMany({
+      userIds: hrs.map((h) => h._id),
+      message: `HM ${decision === "select" ? "selected" : "rejected"} ${candidate.name}. ${
+        decision === "select" ? "Ready for offer generation." : ""
+      }`,
+      type: decision === "select" ? "success" : "warning",
+      link: decision === "select" ? "/hr/offers" : "/hr/candidates",
+    });
+    await notify({
+      userId: candidate._id,
+      message: `Your application status updated: ${decision === "select" ? "Selected" : "Rejected"}`,
+      type: decision === "select" ? "success" : "warning",
+      link: "/candidate",
+    });
+
+    await recordAuditLog({
+      userId: uid,
+      action: decision === "select" ? "approve" : "update",
+      module: "hiring_recommendation",
+      entityId: rec._id,
+      newValue: { decision, comments },
+    });
+
+    return res.json({ success: true, data: rec });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
+  }
 };
-
-function escapeRegex(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}

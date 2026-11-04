@@ -55,3 +55,19 @@ export function getMyOffer() {
     headers: getAuthHeaders(),
   });
 }
+
+export function acceptOffer(formData) {
+  return apiRequest("/candidates/offer/accept", {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: formData,
+  });
+}
+
+export function declineOffer(data = {}) {
+  return apiRequest("/candidates/offer/decline", {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+}

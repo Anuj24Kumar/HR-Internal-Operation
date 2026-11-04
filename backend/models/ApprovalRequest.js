@@ -5,7 +5,7 @@ const approvalStepSchema = new mongoose.Schema(
     order: { type: Number, required: true },
     approverRole: { type: String, enum: ["admin", "hr", "hiring_manager"], required: true },
     approverId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-    status: { type: String, enum: ["pending", "approved", "rejected", "Pending", "Approved", "Rejected"], default: "pending" },
+    status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending" },
     comment: { type: String, default: "" },
     actedAt: { type: Date, default: null },
   },
@@ -22,7 +22,7 @@ const approvalRequestSchema = new mongoose.Schema(
     currentStep: { type: Number, default: 1 },
     status: {
       type: String,
-      enum: ["pending", "approved", "rejected", "Pending", "Approved", "Rejected"],
+      enum: ["pending", "approved", "rejected"],
       default: "pending",
       index: true,
     },

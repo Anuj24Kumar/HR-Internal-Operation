@@ -1,7 +1,6 @@
 
 const mongoose = require("mongoose");
-const Onboarding = require("../models/Onboarding");
-const Employee = require("../models/Employee");
+const { Onboarding, User: Employee } = require("../models");
 
 // GET /api/v1/onboarding
 // List all onboarding checklists with progress.
@@ -10,7 +9,7 @@ const getAllOnboarding = async (req, res) => {
     const onboarding = await Onboarding.find()
       .populate(
         "employeeId",
-        "empId type personalInfo department designation joiningDate"
+        "empId role department designation joiningDate"
       )
       .populate("createdBy", "name email")
       .sort({ createdAt: -1 });
@@ -84,7 +83,7 @@ const createOnboarding = async (req, res) => {
       });
     }
 
-    const employee = await Employee.findById(employeeId);
+    const employee = await Employee.findOne({ _id: employeeId, role: { $in: ["employee", "intern"] } });
 
     if (!employee) {
       return res.status(404).json({
@@ -196,12 +195,12 @@ const updateOnboardingTask = async (req, res) => {
       });
     }
 
-    const allowedStatuses = ["Pending", "In Progress", "Completed"];
+    const allowedStatuses = ["pending", "in_progress", "completed"];
 
     if (status !== undefined && !allowedStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
-        message: "Status must be Pending, In Progress, or Completed",
+        message: "Status must be pending, in_progress, or completed",
       });
     }
 
@@ -226,7 +225,7 @@ const updateOnboardingTask = async (req, res) => {
     if (status !== undefined) {
       task.status = status;
       task.completedAt =
-        status === "Completed" ? new Date() : null;
+        status === "completed" ? new Date() : null;
     }
 
     if (description !== undefined) {
@@ -303,7 +302,7 @@ const addOnboardingTask = async (req, res) => {
       description: description || "",
       owner: owner || "HR",
       dueDate: dueDate || null,
-      status: "Pending",
+      status: "pending",
       completedAt: null,
     });
 

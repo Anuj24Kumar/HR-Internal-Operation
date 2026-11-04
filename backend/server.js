@@ -10,7 +10,6 @@ const adminRoutes = require("./routes/admin/adminRoutes");
 const interviewerRoutes = require("./routes/interviewer/interviewerRoutes");
 const hiringManagerRoutes = require("./routes/hiring-manager/hiringManagerRoutes");
 const candidateRoutes = require("./routes/candidate/candidateRoutes");
-const signRoutes = require("./routes/signRoutes");
 const internRoutes = require("./routes/intern/internRoutes");
 const employeeRoutes = require("./routes/employee/employeeRoutes");
 const interviewRoutes = require("./routes/interviewRoutes");
@@ -20,6 +19,7 @@ const documentRoutes = require("./routes/documentRoutes");
 const onboardingRoutes = require("./routes/onboardingRoutes");
 const exitRoutes = require("./routes/exitRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 
 const app = express();
 
@@ -38,8 +38,6 @@ app.use("/api/v1", hiringManagerRoutes);
 app.use("/api/candidate", candidateRoutes);
 app.use("/api/v1/candidate", candidateRoutes);
 app.use("/api/v1/candidates", candidateRoutes);
-app.use("/api/sign", signRoutes);
-app.use("/api/v1/sign", signRoutes);
 app.use("/api/intern", internRoutes);
 app.use("/api/v1/intern", internRoutes);
 app.use("/api/v1/interns", internRoutes);
@@ -58,6 +56,8 @@ app.use("/api/v1/documents", documentRoutes);
 app.use("/api/v1/onboarding", onboardingRoutes);
 app.use("/api/v1/exits", exitRoutes);
 app.use("/api/v1/dashboard", dashboardRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/v1/notifications", notificationRoutes);
 
 app.get("/", (req, res) => {
   res.status(200).json({

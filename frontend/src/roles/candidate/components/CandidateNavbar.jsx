@@ -45,17 +45,12 @@ export default function CandidateNavbar({ userMessage, onLogout, onToggleMobile 
     role: "candidate",
   };
 
-  const notifications = [
-    { id: 1, title: "Application Active", message: "Review your interview stages and documents." },
-  ];
-
   return (
     <UnifiedNavbar
       user={user}
       roleLabel="Candidate"
       onViewProfile={() => navigate("/candidate/profile")}
       onLogout={onLogout}
-      notifications={notifications}
       onToggleMobile={onToggleMobile}
     />
   );

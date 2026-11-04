@@ -4,7 +4,7 @@ const employeeHistorySchema = new mongoose.Schema(
   {
     employeeId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Employee",
+      ref: "User",
       required: true,
       index: true,
     },
