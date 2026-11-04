@@ -30,9 +30,11 @@ export default function UnifiedSidebar({
         {/* Brand header */}
         <div className="flex h-[70px] shrink-0 items-center justify-between border-b border-slate-800/80 px-5">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 font-bold text-white shadow-sm text-lg select-none">
-              P
-            </div>
+            <img
+              src="/logo.jpg"
+              alt="PeopleOps"
+              className="h-10 w-10 shrink-0 rounded-xl object-cover shadow-2xs"
+            />
             <div className="min-w-0">
               <h1 className="text-base font-bold tracking-tight text-white leading-snug">
                 PeopleOps
@@ -134,8 +136,6 @@ export default function UnifiedSidebar({
             );
           })}
         </nav>
-
-        {/* Bottom: Intentionally empty as requested ("at bottom not any option") */}
       </aside>
     </>
   );
