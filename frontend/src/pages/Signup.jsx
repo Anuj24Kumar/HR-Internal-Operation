@@ -67,16 +67,15 @@ export default function Signup() {
   }
 
   return (
-    <main className="auth-page auth-page-split">
+    <main className="auth-page">
       <AuthShowcase mode="signup" />
       <section className="auth-panel">
       <div className="auth-card auth-card-lg">
         {/* Brand & Heading */}
         <div className="auth-header">
-          <span className="auth-form-eyebrow">GET STARTED</span>
-          <h1 className="auth-title">Create your account</h1>
+          <h1 className="auth-title">Candidate Registration</h1>
           <p className="auth-subtitle">
-            Join PeopleOps to apply and track your recruitment journey.
+            Apply and track your recruitment stages, documents, and offers
           </p>
         </div>
 
@@ -213,7 +212,7 @@ export default function Signup() {
           </Link>
         </div>
       </div>
-      </section>
+        </section>
     </main>
   );
 }

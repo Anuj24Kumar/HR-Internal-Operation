@@ -86,16 +86,15 @@ export default function Login() {
   }
 
   return (
-    <main className="auth-page auth-page-split auth-page-login">
-      <AuthShowcase />
+    <main className="auth-page">
+      <AuthShowcase mode="login" />
       <section className="auth-panel">
       <div className="auth-card">
         {/* Brand & Heading */}
         <div className="auth-header">
-          <span className="auth-form-eyebrow">WELCOME BACK</span>
-          <h1 className="auth-title">Log in to PeopleOps</h1>
+          <h1 className="auth-title">Sign in to your account</h1>
           <p className="auth-subtitle">
-            Access your workspace to continue where you left off.
+            Enterprise human resources & operations workspace
           </p>
         </div>
 
@@ -186,10 +185,10 @@ export default function Login() {
             {loading ? (
               <>
                 <Loader2 size={16} className="spin" />
-                <span>Logging in...</span>
+                <span>Signing in...</span>
               </>
             ) : (
-              <span>Log In</span>
+              <span>Sign In</span>
             )}
           </button>
         </form>
@@ -198,10 +197,10 @@ export default function Login() {
         <div className="auth-demo-box">
           <div className="auth-demo-title">
             <Zap size={14} style={{ color: "#2563eb" }} />
-            <span>Quick 1-Click Log In</span>
+            <span>Quick 1-Click Login</span>
           </div>
           <p style={{ fontSize: "11.5px", color: "#64748b", margin: "4px 0 10px 0" }}>
-            Click any role to log in immediately:
+            Click any role to auto-sign in immediately:
           </p>
           <div className="auth-demo-pills">
             {DEMO_ACCOUNTS.map((acc) => (
@@ -227,7 +226,7 @@ export default function Login() {
           </Link>
         </div>
       </div>
-      </section>
+        </section>
     </main>
   );
 }

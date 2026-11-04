@@ -54,7 +54,6 @@ export default function AuthShowcase({ mode = "login" }) {
           <circle cx="359" cy="246" r="4" fill="#fff" />
           <circle cx="374" cy="246" r="4" fill="#fff" />
           <circle cx="389" cy="246" r="4" fill="#fff" />
-
           <path d="M210 296c4-26 20-41 47-42 26-1 44 14 49 42l8 35h-113l9-35Z" fill="#356C88" />
           <path d="M229 262c6 8 15 12 27 12 13 0 22-4 29-12l10 69h-75l9-69Z" fill="#fff" />
           <path d="m250 276 7 11 8-11-8-7-7 7Z" fill="#2B6D8B" />
@@ -68,7 +67,6 @@ export default function AuthShowcase({ mode = "login" }) {
           <path d="M206 324h43v9h-51c0-5 3-9 8-9ZM286 324h43c5 0 8 4 8 9h-51v-9Z" fill="#263D4D" />
           <path d="M207 331h42M286 331h51" stroke="#182A38" strokeWidth="4" strokeLinecap="round" />
           <path d="M184 312v19M331 312v19" stroke="#8CB6C8" strokeWidth="5" strokeLinecap="round" />
-
           <path d="M115 315h51v9h-51zM120 324h4v11h-4zM157 324h4v11h-4z" fill="#8ABBD0" />
           <path d="M110 315h61" stroke="#5797B2" strokeWidth="5" strokeLinecap="round" />
           <path d="M385 325h35l-5 10h-25l-5-10Z" fill="#73B79D" />
