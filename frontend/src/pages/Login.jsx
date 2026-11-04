@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, CheckCircle2, Zap } from "lucide-react";
 import { apiRequest } from "../api.js";
 import { roles } from "../roles.js";
+import AuthShowcase from "./AuthShowcase.jsx";
 import "./auth.css";
 
 const DEMO_ACCOUNTS = [
@@ -85,17 +86,16 @@ export default function Login() {
   }
 
   return (
-    <main className="auth-page">
+    <main className="auth-page auth-page-split auth-page-login">
+      <AuthShowcase />
+      <section className="auth-panel">
       <div className="auth-card">
         {/* Brand & Heading */}
         <div className="auth-header">
-          <div className="auth-brand">
-            <div className="auth-brand-icon">P</div>
-            <span className="auth-brand-text">PeopleOps</span>
-          </div>
-          <h1 className="auth-title">Sign in to your account</h1>
+          <span className="auth-form-eyebrow">WELCOME BACK</span>
+          <h1 className="auth-title">Log in to PeopleOps</h1>
           <p className="auth-subtitle">
-            Enterprise human resources & operations workspace
+            Access your workspace to continue where you left off.
           </p>
         </div>
 
@@ -186,10 +186,10 @@ export default function Login() {
             {loading ? (
               <>
                 <Loader2 size={16} className="spin" />
-                <span>Signing in...</span>
+                <span>Logging in...</span>
               </>
             ) : (
-              <span>Sign In</span>
+              <span>Log In</span>
             )}
           </button>
         </form>
@@ -198,10 +198,10 @@ export default function Login() {
         <div className="auth-demo-box">
           <div className="auth-demo-title">
             <Zap size={14} style={{ color: "#2563eb" }} />
-            <span>Quick 1-Click Login</span>
+            <span>Quick 1-Click Log In</span>
           </div>
           <p style={{ fontSize: "11.5px", color: "#64748b", margin: "4px 0 10px 0" }}>
-            Click any role to auto-sign in immediately:
+            Click any role to log in immediately:
           </p>
           <div className="auth-demo-pills">
             {DEMO_ACCOUNTS.map((acc) => (
@@ -227,6 +227,7 @@ export default function Login() {
           </Link>
         </div>
       </div>
+      </section>
     </main>
   );
 }
