@@ -9,6 +9,7 @@ const userSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true, index: true, lowercase: true, trim: true },
     phone: { type: String, trim: true },
     password: { type: String, required: true, minlength: 8, select: false },
+    passwordHash: { type: String, select: false },
     passwordResetRequired: { type: Boolean, default: false },
     role: {
       type: String,
@@ -79,13 +80,16 @@ userSchema.pre("save", async function () {
   }
 });
 
-userSchema.methods.comparePassword = function (enteredPassword) {
-  return bcrypt.compare(enteredPassword, this.password);
+userSchema.methods.comparePassword = async function (enteredPassword) {
+  const hash = this.password || this.passwordHash;
+  if (!hash || !enteredPassword) return false;
+  return bcrypt.compare(enteredPassword, hash);
 };
 
 userSchema.methods.toJSON = function () {
   const user = this.toObject();
   delete user.password;
+  delete user.passwordHash;
   delete user.resetToken;
   delete user.resetExpires;
   return user;

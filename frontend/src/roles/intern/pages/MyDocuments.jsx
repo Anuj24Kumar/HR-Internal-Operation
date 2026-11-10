@@ -42,7 +42,7 @@ function getFileUrl(fileUrl) {
     return fileUrl;
   }
 
-  const apiBase = import.meta.env.VITE_API_URL;
+  const apiBase = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL;
 
   const origin = apiBase
     ? new URL(apiBase, window.location.origin).origin

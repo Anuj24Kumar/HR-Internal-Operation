@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getMyDocuments } from "../services/candidateService.js";
-import { apiRequest } from "../../../api.js";
+import { apiRequest, apiBaseUrl } from "../../../api.js";
 import { useAlert } from "../../../components/AlertProvider.jsx";
 import FileUpload from "../../../components/FileUpload.jsx";
 import Spinner from "../../../components/Spinner.jsx";
@@ -92,7 +92,7 @@ export default function MyDocuments() {
       fd.append("title", documentType.trim() || selectedFile.name);
 
       const token = localStorage.getItem("hr-auth-token") || localStorage.getItem("token");
-      const res = await fetch("/api/v1/candidates/documents", {
+      const res = await fetch(`${apiBaseUrl}/candidates/documents`, {
         method: "POST",
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),

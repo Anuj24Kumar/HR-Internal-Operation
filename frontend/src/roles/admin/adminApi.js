@@ -1,4 +1,4 @@
-const apiBaseUrl = import.meta.env.VITE_API_URL || "/api/v1";
+import { apiBaseUrl } from "../../api.js";
 
 function getAuthToken() {
   return localStorage.getItem("hr-auth-token") || "";

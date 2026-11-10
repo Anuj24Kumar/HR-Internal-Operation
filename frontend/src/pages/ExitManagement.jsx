@@ -70,9 +70,9 @@ const getLetterHref = (url) => {
 
   if (url.startsWith("http")) return url;
 
-  const apiRoot = import.meta.env.VITE_API_URL
+  const apiRoot = import.meta.env.VITE_BACKEND_URL || (import.meta.env.VITE_API_URL
     ? import.meta.env.VITE_API_URL.replace(/\/api\/v1\/?$/, "")
-    : "http://localhost:5000";
+    : "");
 
   return `${apiRoot}${url}`;
 };

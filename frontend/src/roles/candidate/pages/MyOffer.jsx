@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { apiRequest } from "../../../api.js";
+import { apiRequest, apiBaseUrl } from "../../../api.js";
 import { useAlert } from "../../../components/AlertProvider.jsx";
 import FileUpload from "../../../components/FileUpload.jsx";
 import Spinner from "../../../components/Spinner.jsx";
@@ -107,7 +107,7 @@ export default function MyOffer() {
       });
 
       const token = localStorage.getItem("hr-auth-token") || localStorage.getItem("token");
-      const res = await fetch("/api/v1/candidate/offer/accept", {
+      const res = await fetch(`${apiBaseUrl}/candidate/offer/accept`, {
         method: "POST",
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -197,7 +197,7 @@ export default function MyOffer() {
 
   const isAccepted = offer.status === "accepted";
   const isDeclined = offer.status === "declined" || offer.status === "rejected";
-  const pdfUrl = offer.pdfUrl || `/api/v1/offers/${offer._id}/pdf`;
+  const pdfUrl = offer.pdfUrl || `${apiBaseUrl}/offers/${offer._id}/pdf`;
   const requiredDocs = offer.requiredDocuments || [];
 
   return (

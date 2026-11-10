@@ -1,4 +1,8 @@
-export const apiBaseUrl = import.meta.env.VITE_API_URL || "/api/v1";
+export const apiBaseUrl =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.VITE_BACKEND_URL
+    ? `${import.meta.env.VITE_BACKEND_URL.replace(/\/+$/, "")}/api/v1`
+    : "/api/v1");
 
 export async function apiRequest(endpoint, options = {}) {
   const isFormData =

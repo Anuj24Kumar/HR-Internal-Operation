@@ -110,10 +110,10 @@ const loginUser = async (req, res) => {
     // Query exclusively from the users collection
     let user = await User.findOne({
       email: normalizedEmail,
-    }).select("+password");
+    }).select("+password +passwordHash");
 
-    if (!user) {
-      user = await User.findOne({ email: normalizedEmail }).select("+password");
+    if (user && !user.password && user.passwordHash) {
+      user.password = user.passwordHash;
     }
 
     if (!user) {

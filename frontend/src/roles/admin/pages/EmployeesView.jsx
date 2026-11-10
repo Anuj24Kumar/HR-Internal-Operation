@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useAlert } from "../../../components/AlertProvider.jsx";
 
-const apiBase = import.meta.env.VITE_API_URL || "/api/v1";
+import { apiBaseUrl as apiBase } from "../../../api.js";
 
 function getToken() {
   return localStorage.getItem("hr-auth-token") || "";

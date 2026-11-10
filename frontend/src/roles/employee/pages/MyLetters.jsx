@@ -1,7 +1,7 @@
 
 import { useEffect, useState } from "react";
 import { getMyEmployeeLetters } from "../services/employeeService.js";
-import { apiRequest } from "../../../api.js";
+import { apiRequest, apiBaseUrl } from "../../../api.js";
 
 const LETTER_TYPE_LABELS = {
   offer: "Offer Letter",
@@ -62,7 +62,7 @@ export default function MyLetters() {
         throw new Error("Your session has expired. Please log in again.");
       }
 
-      const apiBaseUrl = import.meta.env.VITE_API_URL || "/api/v1";
+
 
       const response = await fetch(
         `${apiBaseUrl}/employees/letters/${letter._id}/pdf`,

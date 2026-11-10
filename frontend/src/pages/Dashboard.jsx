@@ -13,7 +13,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-const API_BASE = import.meta.env.VITE_API_URL || "/api/v1";
+import { apiBaseUrl as API_BASE } from "../api.js";
 
 const getToken = () => localStorage.getItem("hr-auth-token");
 
