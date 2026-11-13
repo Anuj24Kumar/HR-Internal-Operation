@@ -3,50 +3,66 @@ const bcrypt = require("bcryptjs");
 
 const userSchema = new mongoose.Schema(
   {
-    name: { type: String, trim: true, default: "" },
-    firstName: { type: String, trim: true, default: "" },
-    lastName: { type: String, trim: true, default: "" },
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-      lowercase: true,
-      trim: true,
-      index: true,
-    },
-    password: { type: String, minlength: 8, select: false },
-    passwordHash: { type: String, select: false },
-    phone: { type: String, trim: true, default: "" },
+    name: { type: String, required: true, trim: true },
+    firstName: { type: String, trim: true },
+    lastName: { type: String, trim: true },
+    email: { type: String, required: true, unique: true, index: true, lowercase: true, trim: true },
+    phone: { type: String, trim: true },
+    password: { type: String, required: true, minlength: 8, select: false },
+    passwordResetRequired: { type: Boolean, default: false },
     role: {
       type: String,
-      required: true,
-      enum: [
-        "admin",
-        "hr",
-        "hiring_manager",
-        "interviewer",
-        "candidate",
-        "intern",
-        "employee",
-      ],
+      enum: ["candidate", "hr", "interviewer", "hiring_manager", "intern", "employee", "admin"],
       default: "candidate",
       index: true,
     },
-    candidateId: { type: mongoose.Schema.Types.ObjectId, ref: "Candidate", default: null },
-    employeeId: { type: mongoose.Schema.Types.ObjectId, ref: "Employee", default: null },
-    hiringManagerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-    department: { type: String, trim: true, default: "" },
+    profileImage: String,
     isActive: { type: Boolean, default: true, index: true },
     status: {
       type: String,
-      enum: ["active", "inactive", "suspended"],
+      enum: ["active", "inactive", "suspended", "notice", "exited", "completed", "terminated"],
       default: "active",
     },
-    profileImage: { type: String, default: "" },
+    lastLogin: Date,
+    lastLogout: Date,
+    resetToken: { type: String, select: false },
+    resetExpires: { type: Date, select: false },
     isEmailVerified: { type: Boolean, default: false },
-    lastLogin: { type: Date, default: null },
-    resetToken: { type: String, default: null },
-    resetExpires: { type: Date, default: null },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+
+    position: { type: String, trim: true },
+    resumeUrl: String,
+    appliedDate: Date,
+    selectedAs: { type: String, enum: ["intern", "employee", null], default: null },
+    hiringManagerId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    hiringRecommendation: {
+      status: { type: String, enum: ["select", "reject", "pending", null], default: null },
+      comments: String,
+      recommendedAt: Date,
+      recommendedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    },
+
+    empId: { type: String, unique: true, sparse: true },
+    employeeCode: { type: String, unique: true, sparse: true },
+    designation: { type: String, trim: true },
+    department: { type: String, trim: true },
+    joiningDate: Date,
+    employmentType: {
+      type: String,
+      enum: ["full_time", "part_time", "contract", "intern"],
+      default: "full_time",
+    },
+    salary: mongoose.Schema.Types.Mixed,
+    managerId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    location: { type: String, trim: true },
+
+    domain: { type: String, trim: true },
+    track: { type: String, trim: true },
+    stipend: Number,
+    mentor: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    startDate: Date,
+    endDate: Date,
+    onboardingStatus: { type: String, default: "in_progress" },
   },
   { timestamps: true }
 );
@@ -55,31 +71,24 @@ userSchema.pre("validate", function () {
   if (!this.name && (this.firstName || this.lastName)) {
     this.name = [this.firstName, this.lastName].filter(Boolean).join(" ");
   }
-  if (!this.password && !this.passwordHash) {
-    this.invalidate("passwordHash", "A password is required");
-  }
-  if (!this.name) {
-    this.invalidate("name", "A user name is required");
-  }
-  if (this.isModified("status") && !this.isModified("isActive")) {
-    this.isActive = this.status === "active";
-  } else if (this.isModified("isActive")) {
-    this.status = this.isActive ? "active" : "inactive";
+});
+
+userSchema.pre("save", async function () {
+  if (this.isModified("password")) {
+    this.password = await bcrypt.hash(this.password, 12);
   }
 });
 
-userSchema.methods.comparePassword = async function (enteredPassword) {
-  const hash = this.passwordHash || this.password;
-  return hash ? bcrypt.compare(enteredPassword, hash) : false;
+userSchema.methods.comparePassword = function (enteredPassword) {
+  return bcrypt.compare(enteredPassword, this.password);
 };
 
 userSchema.methods.toJSON = function () {
   const user = this.toObject();
   delete user.password;
-  delete user.passwordHash;
   delete user.resetToken;
   delete user.resetExpires;
   return user;
 };
 
-module.exports = mongoose.model("User", userSchema);
+module.exports = mongoose.models.User || mongoose.model("User", userSchema, "users");

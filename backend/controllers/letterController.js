@@ -1,10 +1,10 @@
 
 const mongoose = require("mongoose");
-const Letter = require("../models/Letter");
-const Employee = require("../models/Employee");
-const ApprovalRequest = require("../models/ApprovalRequest");
+const { Letter, User: Employee, ApprovalRequest } = require("../models");
 
 const PDFDocument = require("pdfkit");
+const { generateLetterPdf } = require("../utils/pdfGenerator");
+const { notify } = require("../utils/notificationHelper");
 const fs = require("fs");
 const path = require("path");
 
@@ -12,7 +12,8 @@ const path = require("path");
 const getLetters = async (req, res) => {
   try {
     const letters = await Letter.find()
-      .populate("employeeId", "empId type department designation")
+      .populate("employeeId", "name email role empId department designation")
+      .populate("templateId", "name type")
       .populate("createdBy", "name email")
       .sort({ createdAt: -1 });
 
@@ -33,7 +34,14 @@ const getLetters = async (req, res) => {
 // POST: Create a letter draft
 const createLetter = async (req, res) => {
   try {
-    const { employeeId, letterType, template = "default" } = req.body;
+    const {
+      employeeId,
+      letterType,
+      type: rawType,
+      title: rawTitle,
+      templateId,
+      placeholders: customPlaceholders,
+    } = req.body;
 
     if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId)) {
       return res.status(400).json({
@@ -42,21 +50,22 @@ const createLetter = async (req, res) => {
       });
     }
 
-    if (!letterType || !letterType.trim()) {
+    const effectiveType = letterType || rawType || rawTitle;
+    if (!effectiveType || !effectiveType.trim()) {
       return res.status(400).json({
         success: false,
-        message: "letterType is required",
+        message: "letterType or type is required",
       });
     }
 
-    if (typeof template !== "string" || !template.trim()) {
+    if (templateId && !mongoose.Types.ObjectId.isValid(templateId)) {
       return res.status(400).json({
         success: false,
-        message: "Valid template is required",
+        message: "Invalid templateId",
       });
     }
 
-    const employee = await Employee.findById(employeeId);
+    const employee = await Employee.findOne({ _id: employeeId, role: { $in: ["employee", "intern"] } });
 
     if (!employee) {
       return res.status(404).json({
@@ -67,26 +76,48 @@ const createLetter = async (req, res) => {
 
     const placeholders = {
       empId: employee.empId,
-      name: employee.personalInfo?.name || "",
-      email: employee.personalInfo?.email || "",
+      name: employee.name || "",
+      email: employee.email || "",
       department: employee.department,
       designation: employee.designation,
       joiningDate: employee.joiningDate,
       salary: employee.salary,
+      ...(customPlaceholders && typeof customPlaceholders === "object" && !Array.isArray(customPlaceholders)
+        ? customPlaceholders
+        : {}),
     };
+
+    const normalizedType = effectiveType.toLowerCase();
+    const type = normalizedType.includes("experience") ? "experience"
+      : normalizedType.includes("relieving") ? "relieving"
+        : normalizedType.includes("promotion") ? "promotion"
+          : normalizedType.includes("increment") || normalizedType.includes("salary") ? "increment"
+            : normalizedType.includes("warning") ? "warning"
+              : normalizedType.includes("appointment") || normalizedType.includes("offer") || normalizedType.includes("internship")
+                ? "appointment" : "other";
+
+    const letterTitle = rawTitle || letterType || (type.charAt(0).toUpperCase() + type.slice(1) + " Letter");
 
     const letter = await Letter.create({
       employeeId,
-      letterType: letterType.trim(),
-      template: template.trim(),
+      type,
+      title: letterTitle.trim(),
+      templateId: templateId || undefined,
       placeholders,
-      createdBy: req.user.id,
-      status: "Draft",
-      version: 1,
+      createdBy: req.user.id || req.user._id,
+      status: "draft",
+    });
+
+    await notify({
+      userId: employeeId,
+      message: `New letter available: ${letter.title}`,
+      type: "success",
+      link: "/employee/letters",
     });
 
     const createdLetter = await Letter.findById(letter._id)
-      .populate("employeeId", "empId type department designation")
+      .populate("employeeId", "name email role empId department designation")
+      .populate("templateId", "name type")
       .populate("createdBy", "name email");
 
     return res.status(201).json({
@@ -125,6 +156,7 @@ const getLetterById = async (req, res) => {
 
     const letter = await Letter.findById(id)
       .populate("employeeId")
+      .populate("templateId", "name type")
       .populate("createdBy", "name email");
 
     if (!letter) {
@@ -134,12 +166,20 @@ const getLetterById = async (req, res) => {
       });
     }
 
+    const role = String(req.user?.role || "").toLowerCase();
+    if (["employee", "intern"].includes(role)) {
+      const ownerId = String(letter.employeeId?._id || letter.employeeId);
+      if (ownerId !== String(req.user?.id || req.user?._id)) {
+        return res.status(403).json({ success: false, message: "Not authorized to view this letter" });
+      }
+    }
+
     return res.status(200).json({
       success: true,
       data: letter,
     });
   } catch (error) {
-    console.error("Get letter error:", error);
+    console.error("Get letter by ID error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch letter",
@@ -147,168 +187,43 @@ const getLetterById = async (req, res) => {
   }
 };
 
-// The following endpoints are placeholders for the next implementation steps.
-
 const getLetterPdf = async (req, res) => {
   try {
     const { id } = req.params;
-
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid letter ID",
-      });
+      return res.status(400).json({ success: false, message: "Invalid letter ID" });
     }
-
     const letter = await Letter.findById(id).populate("employeeId");
-
     if (!letter) {
-      return res.status(404).json({
-        success: false,
-        message: "Letter not found",
-      });
+      return res.status(404).json({ success: false, message: "Letter not found" });
     }
-
     if (!letter.employeeId) {
-      return res.status(404).json({
-        success: false,
-        message: "Employee not found",
-      });
+      return res.status(404).json({ success: false, message: "Employee not found" });
     }
 
-    // Create storage folder if it doesn't exist.
-const storageDir = path.resolve(
-  __dirname,
-  "..",
-  "uploads",
-  "letters"
-);
+    const filename = `letter-${letter._id}-v${letter.version || 1}.pdf`;
+    const storageDir = path.resolve(__dirname, "..", "uploads", "letters");
+    await fs.promises.mkdir(storageDir, { recursive: true });
+    const localFilePath = path.join(storageDir, filename);
 
-await fs.promises.mkdir(storageDir, {
-  recursive: true,
-});
-
-    // Use a predictable filename for the current version.
-    const filename = `letter-${letter._id}-v${letter.version}.pdf`;
-    const filePath = path.join(storageDir, filename);
-    const relativeUrl = `/uploads/letters/${filename}`;
-
-    // Reuse the stored PDF if it already exists.
-    if (letter.pdfUrl && fs.existsSync(filePath)) {
-      return res.download(filePath, filename);
+    if (letter.pdfUrl && fs.existsSync(localFilePath)) {
+      return res.download(localFilePath, filename);
     }
 
-    const employee = letter.employeeId;
-    const p = letter.placeholders || {};
-
-    const doc = new PDFDocument({
-      size: "A4",
-      margin: 50,
-      info: {
-        Title: letter.letterType,
-        Author: "HR Department",
-      },
-    });
-console.log("PDF storage directory:", storageDir);
-console.log("Directory exists:", fs.existsSync(storageDir));
-    const writeStream = fs.createWriteStream(filePath);
-    doc.pipe(writeStream);
-
-    doc
-      .font("Helvetica-Bold")
-      .fontSize(20)
-      .text(letter.letterType.toUpperCase(), { align: "center" });
-
-    doc.moveDown(2);
-    doc.font("Helvetica").fontSize(11);
-
-    doc.text(`Date: ${new Date().toLocaleDateString("en-IN")}`);
-    doc.text(`Employee ID: ${p.empId || employee.empId || "N/A"}`);
-
-    doc.moveDown();
-    doc.text(`Dear ${p.name || "Employee"},`);
-    doc.moveDown();
-
-    if (letter.letterType === "Experience Letter") {
-      doc.text(
-        `This letter confirms that ${p.name || "the employee"} was associated with our organization as ${p.designation || employee.designation || "N/A"} in the ${p.department || employee.department || "N/A"} department.`
-      );
-
-      doc.moveDown();
-
-      doc.text(
-        `The recorded joining date is ${
-          p.joiningDate
-            ? new Date(p.joiningDate).toLocaleDateString("en-IN")
-            : "not available"
-        }. We appreciate the employee's contribution to the organization.`
-      );
-    } else {
-      doc.text(
-        `This letter has been generated for ${p.name || "the employee"} regarding ${letter.letterType}.`
-      );
-
-      doc.moveDown();
-      doc.text(
-        `Designation: ${p.designation || employee.designation || "N/A"}`
-      );
-      doc.text(
-        `Department: ${p.department || employee.department || "N/A"}`
-      );
-    }
-
-    doc.moveDown(2);
-    doc.text("Regards,");
-    doc.moveDown();
-    doc.font("Helvetica-Bold").text("HR Department");
-    doc.font("Helvetica").text("Company Representative");
-
-    doc.moveDown(2);
-    doc
-      .fontSize(8)
-      .fillColor("gray")
-      .text(`Letter Reference: ${letter._id} | Version: ${letter.version}`, {
-        align: "center",
-      });
-
-    // Wait for the PDF file to finish writing.
-    const fileSaved = new Promise((resolve, reject) => {
-  writeStream.once("finish", resolve);
-  writeStream.once("error", (error) => {
-    console.error("PDF file write error:", error);
-    reject(error);
-  });
-
-  doc.once("error", (error) => {
-    console.error("PDF document error:", error);
-    reject(error);
-  });
-});
-
-doc.end();
-await fileSaved;
-
-    // Persist the URL in MongoDB.
+    const relativeUrl = await generateLetterPdf(letter, letter.employeeId);
     letter.pdfUrl = relativeUrl;
+    letter.status = "generated";
+    letter.issuedAt = new Date();
     await letter.save();
 
-    return res.download(filePath, filename);
-
-} catch (error) {
-  console.error("Generate letter PDF error:", error);
-
-  if (!res.headersSent) {
-    return res.status(500).json({
-      success: false,
-      message: "Failed to generate and save letter PDF",
-      debug: error.message,
-      code: error.code || null,
-    });
+    return res.download(path.join(__dirname, "..", relativeUrl), filename);
+  } catch (error) {
+    console.error("Generate letter PDF error:", error);
+    if (!res.headersSent) {
+      return res.status(500).json({ success: false, message: "Failed to generate letter PDF" });
+    }
+    res.destroy(error);
   }
-
-  res.destroy(error);
-}
-
 };
 
 
@@ -337,7 +252,7 @@ const submitLetter = async (req, res) => {
     }
 
     // Only Draft letters can be submitted
-    if (letter.status !== "Draft") {
+    if (letter.status !== "draft") {
       return res.status(400).json({
         success: false,
         message: `Only Draft letters can be submitted. Current status: ${letter.status}`,
@@ -349,13 +264,12 @@ const submitLetter = async (req, res) => {
       requestType: "Letter",
       resourceId: letter._id,
       requestedBy: req.user.id,
-      status: "Pending",
+      status: "pending",
       submittedAt: new Date(),
     });
 
     // Update letter status
-    letter.status = "Pending Approval";
-    letter.submittedAt = new Date();
+    letter.status = "pending_approval";
 
     await letter.save();
 
@@ -431,7 +345,7 @@ const decideLetterApproval = async (req, res) => {
       });
     }
 
-    if (letter.status !== "Pending Approval") {
+    if (letter.status !== "pending_approval") {
       return res.status(400).json({
         success: false,
         message: "Only letters pending approval can be reviewed",
@@ -441,7 +355,7 @@ const decideLetterApproval = async (req, res) => {
     const approvalRequest = await ApprovalRequest.findOne({
       requestType: "Letter",
       resourceId: letter._id,
-      status: "Pending",
+      status: "pending",
     });
 
     if (!approvalRequest) {
@@ -451,14 +365,12 @@ const decideLetterApproval = async (req, res) => {
       });
     }
 
-    approvalRequest.status =
-      action === "approved" ? "Approved" : "Rejected";
+    approvalRequest.status = action;
     approvalRequest.approverId = req.user.id;
     approvalRequest.comments = comments.trim();
     approvalRequest.reviewedAt = new Date();
 
-    letter.status =
-      action === "approved" ? "Approved" : "Rejected";
+    letter.status = action === "approved" ? "approved" : "draft";
 
     await approvalRequest.save();
     await letter.save();
@@ -508,7 +420,7 @@ const regenerateLetter = async (req, res) => {
     }
 
     // Do not modify a letter while approval is in progress.
-    if (letter.status === "Pending Approval") {
+    if (letter.status === "pending_approval") {
       return res.status(400).json({
         success: false,
         message:
@@ -531,8 +443,7 @@ const regenerateLetter = async (req, res) => {
     // Start a new version.
     letter.version = oldVersion + 1;
     letter.pdfUrl = null;
-    letter.status = "Draft";
-    letter.submittedAt = null;
+    letter.status = "draft";
 
     await letter.save();
 
@@ -573,7 +484,7 @@ const deleteLetter = async (req, res) => {
       });
     }
 
-    if (letter.status !== "Draft") {
+    if (letter.status !== "draft") {
       return res.status(400).json({
         success: false,
         message: "Only draft letters can be deleted",

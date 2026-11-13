@@ -5,8 +5,8 @@ const clearanceSchema = new mongoose.Schema(
     department: { type: String, enum: ["IT", "Finance", "Manager", "HR"], default: undefined },
     status: {
       type: String,
-      enum: ["pending", "cleared", "rejected", "Pending", "Completed"],
-      default: "Pending",
+      enum: ["pending", "cleared", "rejected"],
+      default: "pending",
     },
     clearedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     clearedAt: { type: Date, default: null },
@@ -17,7 +17,7 @@ const clearanceSchema = new mongoose.Schema(
 
 const exitClearanceSchema = new mongoose.Schema(
   {
-    status: { type: String, enum: ["Pending", "Completed"], default: "Pending" },
+    status: { type: String, enum: ["pending", "completed"], default: "pending" },
     clearedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     clearedAt: { type: Date, default: null },
   },
@@ -26,14 +26,14 @@ const exitClearanceSchema = new mongoose.Schema(
 
 const exitSchema = new mongoose.Schema(
   {
-    employeeId: { type: mongoose.Schema.Types.ObjectId, ref: "Employee", required: true, index: true },
+    employeeId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
     resignationDate: { type: Date, required: true, default: Date.now },
     lastWorkingDay: { type: Date, required: true },
     reason: { type: String, required: true, trim: true },
     status: {
       type: String,
-      enum: ["initiated", "in_clearance", "completed", "Pending Approval", "Approved", "Rejected", "Completed"],
-      default: "Pending Approval",
+      enum: ["initiated", "in_clearance", "completed", "pending_approval", "approved", "rejected"],
+      default: "pending_approval",
       index: true,
     },
     clearance: {
@@ -59,7 +59,7 @@ const exitSchema = new mongoose.Schema(
 exitSchema.pre("save", function () {
   const departments = ["it", "finance", "manager", "hr"];
   const completed = departments.filter(
-    (department) => this.clearance[department]?.status === "Completed"
+    (department) => this.clearance[department]?.status === "completed"
   ).length;
   this.clearanceProgress = Math.round((completed / departments.length) * 100);
 });

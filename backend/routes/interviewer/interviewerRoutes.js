@@ -20,6 +20,12 @@ router.patch(
   requireInterviewer,
   controller.updateFeedback
 );
+router.patch(
+  '/candidates/:id/interviews/:roundId/status',
+  verifyToken,
+  requireInterviewer,
+  controller.completeInterview
+);
 router.get(
   '/candidates/:id/interviews/:roundId/feedback',
   verifyToken,

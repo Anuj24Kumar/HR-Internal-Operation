@@ -1,178 +1,316 @@
-const mongoose = require('mongoose');
-const Candidate = require('../../models/Candidate');
-const InterviewFeedback = require('../../models/interviewer/InterviewFeedback');
+const mongoose = require("mongoose");
+const { Interview, InterviewFeedback, User, HiringRecommendation } = require("../../models");
+const { notifyMany } = require("../../utils/notificationHelper");
+const { recordAuditLog } = require("../../utils/auditLogger");
 
-const userIdOf = (req) => req.user?._id || req.user?.id;
-const sameId = (a, b) => String(a || '') === String(b || '');
-const normalizedRole = (req) => String(req.user?.role || '').toLowerCase();
+const userIdOf = (req) => req.user?.id || req.user?._id;
 
-function stripSensitive(candidate) {
-  const obj = typeof candidate.toObject === 'function' ? candidate.toObject() : { ...candidate };
-  for (const key of ['salary', 'ctc', 'offer', 'offerDetails', 'salaryDetails']) delete obj[key];
-  if (Array.isArray(obj.interviews)) {
-    obj.interviews = obj.interviews.map(round => {
-      const clean = { ...round };
-      for (const key of ['salary', 'ctc', 'offer', 'offerDetails']) delete clean[key];
-      return clean;
-    });
-  }
-  return obj;
-}
-
-function assignedRound(candidate, roundId, interviewerId) {
-  const round = candidate.interviews?.find(r =>
-    (sameId(r._id, roundId) || sameId(r.round, roundId)) &&
-    sameId(r.interviewerId?._id || r.interviewerId, interviewerId)
-  );
-  return round || null;
+async function findAssignedInterview(req, includeApplication = false) {
+  if (!mongoose.Types.ObjectId.isValid(req.params.roundId) ||
+      (req.params.id && !mongoose.Types.ObjectId.isValid(req.params.id))) return null;
+  const filter = { _id: req.params.roundId, interviewerId: userIdOf(req) };
+  if (req.params.id) filter.candidateId = req.params.id;
+  const query = Interview.findOne(filter)
+    .populate("candidateId", "name email phone position resumeUrl");
+  if (includeApplication) query.populate("applicationId", "position jobType status");
+  return query;
 }
 
 exports.listMyInterviews = async (req, res, next) => {
   try {
-    const uid = userIdOf(req);
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
-    const candidates = await Candidate.find({
-      isArchived: { $ne: true },
-      'interviews.interviewerId': uid
-    })
-      .select('-salary -ctc -offer -offerDetails -salaryDetails')
-      .sort({ createdAt: -1 }).lean();
-    const rounds = [];
-    for (const candidate of candidates) {
-      for (const round of (candidate.interviews || [])) {
-        if (sameId(round.interviewerId, uid)) {
-          rounds.push({
-            candidate: stripSensitive({ ...candidate, interviews: undefined }),
-            interview: round
-          });
-        }
-      }
-    }
-    rounds.sort((a, b) => new Date(b.interview.scheduledAt || 0) - new Date(a.interview.scheduledAt || 0));
-    const total = rounds.length;
-    const data = rounds.slice((page - 1) * limit, page * limit);
-    return res.json({ success: true, data,
-      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } });
-  } catch (err) { next(err); }
+    const filter = { interviewerId: userIdOf(req) };
+    if (req.query.status) filter.status = req.query.status;
+    const [interviews, total] = await Promise.all([
+      Interview.find(filter)
+        .populate("candidateId", "name email position")
+        .populate("applicationId", "position jobType status")
+        .sort({ scheduledAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Interview.countDocuments(filter),
+    ]);
+
+    const enrichedInterviews = await Promise.all(
+      interviews.map(async (inv) => {
+        const feedback = await InterviewFeedback.findOne({ roundId: inv._id }).select("lockedAt").lean();
+        const rec = await HiringRecommendation.findOne({ applicationId: inv.applicationId?._id || inv.applicationId }).select("_id").lean();
+        return {
+          ...inv,
+          isLocked: Boolean(feedback?.lockedAt || rec),
+        };
+      })
+    );
+
+    return res.json({
+      success: true,
+      data: { interviews: enrichedInterviews, total, page, pages: Math.ceil(total / limit) },
+    });
+  } catch (err) {
+    return next(err);
+  }
 };
 
 exports.getMyInterview = async (req, res, next) => {
   try {
-    const uid = userIdOf(req);
-    const candidates = await Candidate.find({
-      'interviews.interviewerId': uid
-    }).select('-salary -ctc -offer -offerDetails -salaryDetails').lean();
-    for (const candidate of candidates) {
-      const round = assignedRound(candidate, req.params.roundId, uid);
-      if (round) {
-        return res.json({ success: true, data: {
-          candidate: stripSensitive({ ...candidate, interviews: undefined }),
-          interview: round
-        }});
-      }
+    const interview = await findAssignedInterview(req, true);
+    if (!interview) {
+      return res.status(404).json({ success: false, message: "Interview not found or not assigned to you" });
     }
-    return res.status(404).json({ success: false, error: {
-      code: 'NOT_FOUND', message: 'Interview round not found or not assigned to you'
-    }});
-  } catch (err) { next(err); }
+    const invObj = interview.toObject ? interview.toObject() : { ...interview };
+    const feedback = await InterviewFeedback.findOne({ roundId: invObj._id }).select("lockedAt").lean();
+    const rec = await HiringRecommendation.findOne({ applicationId: invObj.applicationId?._id || invObj.applicationId }).select("_id").lean();
+    invObj.isLocked = Boolean(feedback?.lockedAt || rec);
+    return res.json({ success: true, data: invObj });
+  } catch (err) {
+    return next(err);
+  }
 };
 
-async function saveFeedback(req, res, next, isUpdate) {
+exports.submitFeedback = async (req, res) => {
   try {
-    const rating = Number(req.body.rating);
-    const feedback = String(req.body.feedback || '').trim();
-    if (!Number.isInteger(rating) || rating < 1 || rating > 5 || !feedback) {
-      return res.status(400).json({ success: false, error: {
-        code: 'VALIDATION_ERROR', message: 'rating must be an integer from 1 to 5 and feedback is required'
-      }});
-    }
-    const candidate = await Candidate.findOne({
-      _id: req.params.id,
-      'interviews.interviewerId': userIdOf(req)
-    });
-    if (!candidate) return res.status(404).json({ success: false, error: {
-      code: 'NOT_FOUND', message: 'Candidate or assigned interview not found'
-    }});
-    const round = assignedRound(candidate, req.params.roundId, userIdOf(req));
-    if (!round) return res.status(404).json({ success: false, error: {
-      code: 'NOT_FOUND', message: 'Interview round not found or not assigned to you'
-    }});
-    if (round.lockedAt || round.feedbackLocked === true) {
-      return res.status(422).json({ success: false, error: {
-        code: 'ROUND_LOCKED', message: 'Feedback is locked by HR and can no longer be changed'
-      }});
-    }
-    const hasFeedback = round.rating != null || Boolean(round.feedback?.trim());
-    if (isUpdate && !hasFeedback) {
-      return res.status(404).json({ success: false, error: {
-        code: 'NOT_FOUND', message: 'Interview feedback has not been submitted'
-      }});
-    }
-    if (!isUpdate && hasFeedback) {
-      return res.status(409).json({ success: false, error: {
-        code: 'FEEDBACK_EXISTS', message: 'Interview feedback has already been submitted'
-      }});
+    if (String(req.body.status || "").toLowerCase() === "completed") {
+      return exports.completeInterview(req, res);
     }
 
-    round.rating = rating;
-    round.feedback = feedback;
-    round.feedbackSubmittedAt = new Date();
-    await candidate.save();
+    const { score, rating, feedback } = req.body;
+    // Allow saving DRAFT feedback (partial) without completing — but validate rating if provided
+    if (rating !== undefined && rating !== null && rating !== "" && (Number(rating) < 1 || Number(rating) > 5)) {
+      return res.status(400).json({ success: false, message: "rating must be 1-5" });
+    }
+    if (score !== undefined && score !== null && score !== "" && (Number(score) < 0 || Number(score) > 100)) {
+      return res.status(400).json({ success: false, message: "score must be 0-100" });
+    }
+    if (feedback !== undefined && feedback !== null && String(feedback).length > 5000) {
+      return res.status(400).json({ success: false, message: "feedback too long" });
+    }
 
+    const uid = userIdOf(req);
+    const filter = { _id: req.params.roundId, interviewerId: uid };
+    if (req.params.id && mongoose.Types.ObjectId.isValid(req.params.id)) {
+      filter.candidateId = req.params.id;
+    }
+    const interview = await Interview.findOne(filter);
+    if (!interview) return res.status(404).json({ success: false, message: "Interview not found" });
+    if (interview.status === "completed") {
+      return res.status(400).json({ success: false, message: "Interview already completed. Use update endpoint." });
+    }
+
+    if (score !== undefined && score !== null && score !== "") interview.score = Number(score);
+    if (rating !== undefined && rating !== null && rating !== "") interview.rating = Number(rating);
+    if (feedback !== undefined && feedback !== null) interview.feedback = String(feedback);
+    interview.feedbackSubmittedAt = new Date();
+    await interview.save();
+
+    // Audit copy
     await InterviewFeedback.findOneAndUpdate(
-      { candidateId: candidate._id, roundId: round._id || req.params.roundId, interviewerId: userIdOf(req) },
-      { $set: { rating, feedback, submittedAt: new Date() } },
-      { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+      { candidateId: interview.candidateId, roundId: interview._id, interviewerId: uid },
+      {
+        candidateId: interview.candidateId,
+        applicationId: interview.applicationId,
+        interviewId: interview._id,
+        roundId: interview._id,
+        interviewerId: uid,
+        score: interview.score,
+        rating: interview.rating,
+        feedback: interview.feedback,
+        submittedAt: new Date(),
+      },
+      { upsert: true, new: true }
     );
 
-    return res.status(isUpdate ? 200 : 201).json({
-      success: true,
-      data: { candidateId: candidate._id, roundId: round._id, rating, feedback },
-      message: isUpdate ? 'Interview feedback updated' : 'Interview feedback submitted'
+    await recordAuditLog({
+      userId: uid,
+      action: "update",
+      module: "interview_feedback",
+      entityId: interview._id,
+      newValue: { score: interview.score, rating: interview.rating },
     });
-  } catch (err) {
-    if (err instanceof mongoose.Error.CastError) {
-      return res.status(400).json({ success: false, error: {
-        code: 'VALIDATION_ERROR', message: 'Invalid candidate or interview ID'
-      }});
-    }
-    next(err);
+    return res.json({ success: true, data: interview });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
   }
-}
-exports.submitFeedback = (req, res, next) => saveFeedback(req, res, next, false);
-exports.updateFeedback = (req, res, next) => saveFeedback(req, res, next, true);
+};
 
-exports.getFeedback = async (req, res, next) => {
+exports.completeInterview = async (req, res) => {
   try {
-    const role = normalizedRole(req);
-    const query = { _id: req.params.id };
-    if (role === 'interviewer') query['interviews.interviewerId'] = userIdOf(req);
-    if (role === 'hiring_manager') query.hiringManagerId = userIdOf(req);
-    const candidate = await Candidate.findOne(query)
-      .select('-salary -ctc -offer -offerDetails -salaryDetails').lean();
-    if (!candidate) return res.status(404).json({ success: false, error: {
-      code: 'NOT_FOUND', message: 'Candidate not found or not visible to you'
-    }});
-    const round = role === 'interviewer'
-      ? assignedRound(candidate, req.params.roundId, userIdOf(req))
-      : candidate.interviews?.find(r =>
-          sameId(r._id, req.params.roundId) || sameId(r.round, req.params.roundId)
-        );
-    if (!round) return res.status(404).json({ success: false, error: {
-      code: 'NOT_FOUND', message: 'Interview round not found or not visible to you'
-    }});
-    return res.json({ success: true, data: {
-      candidateId: candidate._id, roundId: round._id,
-      rating: round.rating ?? null, feedback: round.feedback ?? '',
-      feedbackSubmittedAt: round.feedbackSubmittedAt ?? null
-    }});
-  } catch (err) {
-    if (err instanceof mongoose.Error.CastError) {
-      return res.status(400).json({ success: false, error: {
-        code: 'VALIDATION_ERROR', message: 'Invalid candidate or interview ID'
-      }});
+    const { score, rating, feedback } = req.body;
+    if (score === undefined || score === null || score === "" ||
+        rating === undefined || rating === null || rating === "" ||
+        !feedback || !String(feedback).trim()) {
+      return res.status(400).json({ success: false, message: "score, rating, feedback are all required to complete" });
     }
-    next(err);
+    const numRating = Number(rating);
+    const numScore = Number(score);
+    if (numRating < 1 || numRating > 5) return res.status(400).json({ success: false, message: "rating must be 1-5" });
+    if (numScore < 0 || numScore > 100) return res.status(400).json({ success: false, message: "score must be 0-100" });
+    if (String(feedback).trim().length > 5000) return res.status(400).json({ success: false, message: "feedback too long" });
+
+    const uid = userIdOf(req);
+    const filter = { _id: req.params.roundId, interviewerId: uid };
+    if (req.params.id && mongoose.Types.ObjectId.isValid(req.params.id)) {
+      filter.candidateId = req.params.id;
+    }
+    const interview = await Interview.findOne(filter);
+    if (!interview) return res.status(404).json({ success: false, message: "Interview not found" });
+    if (interview.status === "completed") return res.status(400).json({ success: false, message: "Already completed" });
+
+    interview.score = numScore;
+    interview.rating = numRating;
+    interview.feedback = String(feedback).trim();
+    interview.feedbackSubmittedAt = new Date();
+    interview.status = "completed";
+    await interview.save();
+
+    await InterviewFeedback.findOneAndUpdate(
+      { candidateId: interview.candidateId, roundId: interview._id, interviewerId: uid },
+      {
+        candidateId: interview.candidateId,
+        applicationId: interview.applicationId,
+        interviewId: interview._id,
+        roundId: interview._id,
+        interviewerId: uid,
+        score: numScore,
+        rating: numRating,
+        feedback: String(feedback).trim(),
+        submittedAt: new Date(),
+      },
+      { upsert: true, new: true }
+    );
+
+    // Notify all hiring managers + HR
+    const hms = await User.find({ role: "hiring_manager", isActive: true }).select("_id");
+    const hrs = await User.find({ role: "hr", isActive: true }).select("_id");
+    const candidate = await User.findById(interview.candidateId).select("name");
+    const candidateName = candidate?.name || "Candidate";
+    await notifyMany({
+      userIds: hms.map((h) => h._id),
+      message: `Interview completed: ${candidateName} — score ${numScore}/100, rating ${numRating}/5. Awaiting your decision.`,
+      type: "info",
+      link: "/hiring-manager",
+    });
+    await notifyMany({
+      userIds: hrs.map((h) => h._id),
+      message: `Interview completed for ${candidateName} — awaiting HM decision.`,
+      type: "info",
+      link: "/hr/interviews",
+    });
+
+    await recordAuditLog({
+      userId: uid,
+      action: "update",
+      module: "interview",
+      entityId: interview._id,
+      newValue: { status: "completed", score: numScore, rating: numRating },
+    });
+    return res.json({ success: true, data: interview });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+exports.updateFeedback = async (req, res) => {
+  try {
+    const { score, rating, feedback } = req.body;
+    if (rating !== undefined && rating !== null && rating !== "" && (Number(rating) < 1 || Number(rating) > 5)) {
+      return res.status(400).json({ success: false, message: "rating must be 1-5" });
+    }
+    if (score !== undefined && score !== null && score !== "" && (Number(score) < 0 || Number(score) > 100)) {
+      return res.status(400).json({ success: false, message: "score must be 0-100" });
+    }
+    if (feedback !== undefined && feedback !== null && String(feedback).length > 5000) {
+      return res.status(400).json({ success: false, message: "feedback too long" });
+    }
+
+    const uid = userIdOf(req);
+    const filter = { _id: req.params.roundId, interviewerId: uid };
+    if (req.params.id && mongoose.Types.ObjectId.isValid(req.params.id)) {
+      filter.candidateId = req.params.id;
+    }
+    const interview = await Interview.findOne(filter);
+    if (!interview) return res.status(404).json({ success: false, message: "Interview not found" });
+    if (interview.status !== "completed") {
+      return res.status(400).json({ success: false, message: "Interview is not completed yet. Use submit feedback endpoint." });
+    }
+
+    // Check if HM decision already exists for this application or feedback is locked
+    const feedbackDoc = await InterviewFeedback.findOne({ roundId: interview._id });
+    const rec = await HiringRecommendation.findOne({ applicationId: interview.applicationId });
+    if (feedbackDoc?.lockedAt || rec) {
+      return res.status(400).json({ success: false, message: "Feedback is locked because hiring manager has already made a decision." });
+    }
+
+    if (score !== undefined && score !== null && score !== "") interview.score = Number(score);
+    if (rating !== undefined && rating !== null && rating !== "") interview.rating = Number(rating);
+    if (feedback !== undefined && feedback !== null) interview.feedback = String(feedback);
+    interview.feedbackSubmittedAt = new Date();
+    await interview.save();
+
+    await InterviewFeedback.findOneAndUpdate(
+      { candidateId: interview.candidateId, roundId: interview._id, interviewerId: uid },
+      {
+        candidateId: interview.candidateId,
+        applicationId: interview.applicationId,
+        interviewId: interview._id,
+        roundId: interview._id,
+        interviewerId: uid,
+        score: interview.score,
+        rating: interview.rating,
+        feedback: interview.feedback,
+        submittedAt: new Date(),
+      },
+      { upsert: true, new: true }
+    );
+
+    await recordAuditLog({
+      userId: uid,
+      action: "update",
+      module: "interview_feedback",
+      entityId: interview._id,
+      newValue: { score: interview.score, rating: interview.rating },
+    });
+    return res.json({ success: true, data: interview });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+exports.getFeedback = async (req, res) => {
+  try {
+    const role = String(req.user?.role || "").toLowerCase();
+    const filter = { _id: req.params.roundId };
+    if (req.params.id && mongoose.Types.ObjectId.isValid(req.params.id)) {
+      filter.candidateId = req.params.id;
+    }
+    if (role === "interviewer") {
+      filter.interviewerId = userIdOf(req);
+    }
+
+    const interview = await Interview.findOne(filter)
+      .populate("candidateId", "name email phone position resumeUrl")
+      .populate("interviewerId", "name email");
+
+    if (!interview) {
+      return res.status(404).json({ success: false, message: "Interview not found or not visible to you" });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        candidateId: interview.candidateId?._id || interview.candidateId,
+        candidateName: interview.candidateId?.name,
+        roundId: interview._id,
+        interviewer: interview.interviewerId,
+        score: interview.score ?? null,
+        rating: interview.rating ?? null,
+        feedback: interview.feedback ?? "",
+        feedbackSubmittedAt: interview.feedbackSubmittedAt ?? null,
+        status: interview.status,
+      },
+    });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
   }
 };

@@ -1,8 +1,7 @@
 require("dotenv").config();
 
 const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
-const User = require("./models/User");
+const { User } = require("./models");
 
 const createAdmin = async () => {
   try {
@@ -18,11 +17,9 @@ const createAdmin = async () => {
 
     let existingAdmin = await User.findOne({ email });
 
-    const passwordHash = await bcrypt.hash(password, 12);
-
     if (existingAdmin) {
       existingAdmin.role = "admin";
-      existingAdmin.passwordHash = passwordHash;
+      existingAdmin.password = password;
       existingAdmin.isActive = true;
       existingAdmin.status = "active";
       await existingAdmin.save();
@@ -33,7 +30,7 @@ const createAdmin = async () => {
         firstName: "System",
         lastName: "Admin",
         email,
-        passwordHash,
+        password,
         role: "admin",
         isActive: true,
         status: "active",

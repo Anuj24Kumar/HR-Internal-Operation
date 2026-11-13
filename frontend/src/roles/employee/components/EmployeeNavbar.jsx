@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { apiRequest } from "../../../api.js";
+import UnifiedNavbar from "../../../components/UnifiedNavbar.jsx";
 
-export default function EmployeeNavbar({ userMessage }) {
+export default function EmployeeNavbar({ userMessage, onLogout, onToggleMobile }) {
+  const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
 
   useEffect(() => {
     const token = localStorage.getItem("hr-auth-token");
-
     if (!token) return;
 
     let cancelled = false;
@@ -31,55 +33,25 @@ export default function EmployeeNavbar({ userMessage }) {
   }, []);
 
   const fullName =
-    [profile?.user?.firstName, profile?.user?.lastName]
-      .filter(Boolean)
-      .join(" ") ||
+    [profile?.user?.firstName, profile?.user?.lastName].filter(Boolean).join(" ") ||
     profile?.user?.name ||
     userMessage?.replace(/^Signed in as /, "") ||
     "Employee";
 
-  const initials =
-    fullName
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0].toUpperCase())
-      .join("") || "E";
+  const user = {
+    name: fullName,
+    email: profile?.user?.email,
+    profileImage: profile?.user?.profileImage,
+    role: "employee",
+  };
 
   return (
-    <header className="sticky top-0 z-30 flex h-[76px] items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6 lg:px-8">
-      <div className="flex min-w-0 flex-1 items-center">
-        <span className="mr-3 text-xl text-slate-400">⌕</span>
-
-        <input
-          type="search"
-          aria-label="Search"
-          placeholder="Search anything..."
-          className="w-full max-w-md border-0 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:ring-0"
-        />
-      </div>
-
-      <div className="ml-4 flex shrink-0 items-center gap-3 sm:gap-4">
-        <div className="hidden text-right sm:block">
-          <p className="max-w-[180px] truncate text-sm font-semibold text-slate-800">
-            {fullName}
-          </p>
-
-          <p className="mt-0.5 text-xs text-slate-500">Employee</p>
-        </div>
-
-        {profile?.user?.profileImage ? (
-          <img
-            src={profile.user.profileImage}
-            alt={`${fullName}'s profile`}
-            className="h-10 w-10 rounded-full border border-slate-200 object-cover"
-          />
-        ) : (
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-sm font-semibold text-blue-700">
-            {initials}
-          </div>
-        )}
-      </div>
-    </header>
+    <UnifiedNavbar
+      user={user}
+      roleLabel="Employee"
+      onViewProfile={() => navigate("/employee/profile")}
+      onLogout={onLogout}
+      onToggleMobile={onToggleMobile}
+    />
   );
 }

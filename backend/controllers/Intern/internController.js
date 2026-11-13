@@ -1,12 +1,9 @@
-const Intern = require("../../models/Intern/Intern");
+const { User: Intern } = require("../../models");
 
 // GET LOGGED-IN INTERN PROFILE
 const getMyInternProfile = async (req, res) => {
   try {
-    const intern = await Intern.findOne({
-      user: req.user.id,
-    })
-      .populate("user", "firstName lastName email phone profileImage")
+    const intern = await Intern.findOne({ _id: req.user.id, role: "intern" })
       .populate("mentor", "firstName lastName email");
 
     if (!intern) {

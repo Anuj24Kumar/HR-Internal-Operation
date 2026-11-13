@@ -1,8 +1,7 @@
 require("dotenv").config();
 
 const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
-const User = require("./models/User");
+const { User } = require("./models");
 
 async function resetAdminPassword() {
   try {
@@ -13,15 +12,17 @@ async function resetAdminPassword() {
 
     await mongoose.connect(mongoURI);
 
-    const passwordHash = await bcrypt.hash("Admin@12345", 10);
-
-    const result = await User.updateOne(
-      { email: "admin@company.com" },
-      { $set: { passwordHash, isActive: true, status: "active" } }
-    );
+    const user = await User.findOne({ email: "admin@company.com" });
+    if (user) {
+      user.password = "Admin@12345";
+      user.isActive = true;
+      user.status = "active";
+      user.passwordResetRequired = false;
+      await user.save();
+    }
 
     console.log(
-      result.matchedCount === 1
+      user
         ? "Admin password reset successfully to Admin@12345"
         : "Admin user not found"
     );

@@ -1,6 +1,6 @@
-const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
-const { User, Candidate, Workflow, LetterTemplate } = require("../models");
+const { User, Workflow, LetterTemplate } = require("../models");
 
 const getJwtSecret = () => {
   if (!process.env.JWT_SECRET) {
@@ -12,16 +12,21 @@ const getJwtSecret = () => {
 const registerUser = async (req, res) => {
   let createdUser;
   try {
-    const { firstName, lastName, email, password, phone, position } = req.body;
+    const { name, firstName, lastName, email, password, phone } = req.body;
+    const fullName = typeof name === "string" && name.trim()
+      ? name.trim()
+      : [firstName, lastName]
+          .filter((part) => typeof part === "string" && part.trim())
+          .map((part) => part.trim())
+          .join(" ");
     if (
-      typeof firstName !== "string" || !firstName.trim() ||
-      typeof lastName !== "string" || !lastName.trim() ||
+      !fullName ||
       typeof email !== "string" || !email.trim() ||
       typeof password !== "string" || !password
     ) {
       return res.status(400).json({
         success: false,
-        message: "First name, last name, email, and password are required",
+        message: "Name, email, and password are required",
       });
     }
     if (password.length < 8) {
@@ -39,53 +44,39 @@ const registerUser = async (req, res) => {
       });
     }
 
+    // Store ONLY once in the single users collection
     createdUser = await User.create({
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      name: `${firstName.trim()} ${lastName.trim()}`,
+      firstName: typeof firstName === "string" && firstName.trim()
+        ? firstName.trim()
+        : fullName.split(/\s+/)[0],
+      lastName: typeof lastName === "string" && lastName.trim()
+        ? lastName.trim()
+        : fullName.split(/\s+/).slice(1).join(" "),
+      name: fullName,
       email: normalizedEmail,
-      password: await bcrypt.hash(password, 12),
+      password,
       phone: typeof phone === "string" ? phone.trim() : "",
       role: "candidate",
-    });
-    const candidatePosition = typeof position === "string" && position.trim() ? position.trim() : "Candidate";
-    const candidate = await Candidate.create({
-      user: createdUser._id,
-      userId: createdUser._id,
-      name: createdUser.name,
-      email: createdUser.email,
-      phone: createdUser.phone,
-      position: candidatePosition,
-      applicationSource: "Direct",
-      source: "Direct",
-      status: "Applied",
+      isActive: true,
+      status: "active",
     });
 
+    const token = jwt.sign(
+      { userId: createdUser._id.toString(), role: createdUser.role },
+      getJwtSecret(),
+      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+    );
+    const userDetails = createdUser.toJSON();
     return res.status(201).json({
       success: true,
       message: "User registered successfully",
-      user: {
-        id: createdUser._id,
-        firstName: createdUser.firstName,
-        lastName: createdUser.lastName,
-        email: createdUser.email,
-        phone: createdUser.phone,
-        role: createdUser.role,
-        status: createdUser.status,
-        createdAt: createdUser.createdAt,
-      },
-      application: {
-        id: candidate._id,
-        position: candidate.position,
-        applicationSource: candidate.applicationSource,
-        appliedDate: candidate.appliedDate,
-        status: candidate.status,
-      },
+      token,
+      user: userDetails,
+      data: { user: userDetails, token },
     });
   } catch (error) {
     if (createdUser?._id) {
       try {
-        await Candidate.deleteOne({ user: createdUser._id });
         await User.findByIdAndDelete(createdUser._id);
       } catch (cleanupError) {
         console.error("Registration cleanup error:", cleanupError.message);
@@ -114,24 +105,46 @@ const loginUser = async (req, res) => {
         message: "Email and password are required",
       });
     }
-    const user = await User.findOne({ email: email.trim().toLowerCase() })
-      .select("+password +passwordHash");
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Query exclusively from the users collection
+    let user = await User.findOne({
+      email: normalizedEmail,
+    }).select("+password");
+
+    if (!user) {
+      user = await User.findOne({ email: normalizedEmail }).select("+password");
+    }
+
     if (!user) {
       return res.status(401).json({
         success: false,
         message: "Invalid email or password",
       });
     }
-    if (!user.isActive || user.status !== "active") {
+
+    if (user.passwordResetRequired) {
       return res.status(403).json({
         success: false,
-        message: "Your account is not active",
+        message: "Password reset is required before this account can sign in",
       });
     }
-    if (!(await user.comparePassword(password))) {
+
+    // Compare credentials
+    const isPasswordMatch = await user.comparePassword(password);
+    if (!isPasswordMatch) {
       return res.status(401).json({
         success: false,
         message: "Invalid email or password",
+      });
+    }
+
+    // Check account status
+    if (user.isActive === false || user.status === "inactive" || user.status === "suspended") {
+      return res.status(403).json({
+        success: false,
+        message: "Your account is not active",
       });
     }
 
@@ -149,6 +162,7 @@ const loginUser = async (req, res) => {
       lastName: user.lastName,
       name: user.name,
       email: user.email,
+      phone: user.phone,
       role: user.role,
       status: user.status,
     };
@@ -199,8 +213,28 @@ const getMe = async (req, res) => {
   }
 };
 
+const logoutUser = async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.user.id, { $set: { lastLogout: new Date() } });
+    return res.status(200).json({
+      success: true,
+      message: "Logged out successfully",
+    });
+  } catch (error) {
+    console.error("Logout error:", error.message);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 const seedInitialData = async (req, res) => {
   try {
+    if (process.env.NODE_ENV === "production" && req.headers["x-seed-key"] !== process.env.ADMIN_SEED_SECRET) {
+      return res.status(403).json({
+        success: false,
+        message: "Initial data seeding is disabled in production",
+      });
+    }
+
     let admin = await User.findOne({ role: "admin" });
     let created = false;
     if (!admin) {
@@ -208,7 +242,7 @@ const seedInitialData = async (req, res) => {
         name: "Admin",
         firstName: "Admin",
         email: "admin@hrplatform.com",
-        passwordHash: await bcrypt.hash("admin123", 10),
+        password: "admin123",
         role: "admin",
         isActive: true,
         status: "active",
@@ -268,11 +302,81 @@ const getAdminData = (req, res) =>
     },
   });
 
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (typeof email !== "string" || !email.trim()) {
+      return res.status(400).json({ success: false, message: "Email is required" });
+    }
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await User.findOne({ email: normalizedEmail }).select("+resetToken +resetExpires");
+    if (!user) {
+      return res.status(404).json({ success: false, message: "No account found with this email" });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    user.resetToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+    user.resetExpires = new Date(Date.now() + 3600000); // 1 hour
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset token generated successfully.",
+      resetToken,
+    });
+  } catch (error) {
+    console.error("Forgot password error:", error.message);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const { token, resetToken, password, newPassword } = req.body;
+    const providedToken = token || resetToken;
+    const chosenPassword = password || newPassword;
+
+    if (!providedToken) {
+      return res.status(400).json({ success: false, message: "Reset token is required" });
+    }
+    if (typeof chosenPassword !== "string" || chosenPassword.length < 8) {
+      return res.status(400).json({ success: false, message: "Password must be at least 8 characters long" });
+    }
+
+    const hashedToken = crypto.createHash("sha256").update(providedToken).digest("hex");
+    const user = await User.findOne({
+      resetToken: hashedToken,
+      resetExpires: { $gt: new Date() },
+    }).select("+password +resetToken +resetExpires");
+
+    if (!user) {
+      return res.status(400).json({ success: false, message: "Invalid or expired reset token" });
+    }
+
+    user.password = chosenPassword;
+    user.resetToken = undefined;
+    user.resetExpires = undefined;
+    user.passwordResetRequired = false;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Password has been successfully updated. You can now log in.",
+    });
+  } catch (error) {
+    console.error("Reset password error:", error.message);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
   login: loginUser,
   getMe,
+  logoutUser,
   getAdminData,
   seedInitialData,
+  forgotPassword,
+  resetPassword,
 };

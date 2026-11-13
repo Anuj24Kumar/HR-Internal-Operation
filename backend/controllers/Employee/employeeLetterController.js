@@ -1,13 +1,12 @@
 const fs = require("fs");
 const path = require("path");
 
-const Employee = require("../../models/Employee/Employee");
-const EmployeeLetter = require("../../models/Employee/EmployeeLetter");
+const { User: Employee, Letter } = require("../../models");
 
 // GET /api/employee/letters
 const getMyEmployeeLetters = async (req, res) => {
   try {
-    const employee = await Employee.findOne({ user: req.user.id });
+    const employee = await Employee.findOne({ _id: req.user.id, role: { $in: ["employee", "intern"] } });
 
     if (!employee) {
       return res.status(404).json({
@@ -16,18 +15,18 @@ const getMyEmployeeLetters = async (req, res) => {
       });
     }
 
-    const letters = await EmployeeLetter.find({
-      employee: employee._id,
-      status: "active",
+    const letters = await Letter.find({
+      employeeId: employee._id,
     })
-      .populate("issuedBy", "firstName lastName email")
-      .sort({ issuedAt: -1, version: -1 });
+      .populate("createdBy", "name email")
+      .sort({ createdAt: -1, issuedAt: -1 });
 
     return res.status(200).json({
       success: true,
       message: "Employee letters fetched successfully",
       count: letters.length,
       letters,
+      data: letters,
     });
   } catch (error) {
     console.error("Get Employee Letters Error:", error);
@@ -51,7 +50,7 @@ const downloadEmployeeLetterPdf = async (req, res) => {
       });
     }
 
-    const employee = await Employee.findOne({ user: req.user.id });
+    const employee = await Employee.findOne({ _id: req.user.id, role: { $in: ["employee", "intern"] } });
 
     if (!employee) {
       return res.status(404).json({
@@ -60,10 +59,10 @@ const downloadEmployeeLetterPdf = async (req, res) => {
       });
     }
 
-    const letter = await EmployeeLetter.findOne({
+    const letter = await Letter.findOne({
       _id: id,
-      employee: employee._id,
-      status: "active",
+      employeeId: employee._id,
+      status: { $in: ["generated", "sent"] },
     });
 
     if (!letter) {
@@ -74,9 +73,16 @@ const downloadEmployeeLetterPdf = async (req, res) => {
     }
 
     // This implementation expects a local PDF path or a local uploads URL.
-    const filename = path.basename(letter.fileUrl);
+    if (!letter.pdfUrl) {
+      return res.status(404).json({
+        success: false,
+        message: "Letter PDF is not available",
+      });
+    }
 
-    if (!filename.toLowerCase().endsWith(".pdf")) {
+    const relativePath = letter.pdfUrl.replace(/^\/+/, "");
+
+    if (!relativePath.toLowerCase().endsWith(".pdf")) {
       return res.status(400).json({
         success: false,
         message: "The requested letter is not a PDF",
@@ -88,10 +94,7 @@ const downloadEmployeeLetterPdf = async (req, res) => {
       "uploads"
     );
 
-    const filePath = path.resolve(
-      uploadDirectory,
-      filename
-    );
+    const filePath = path.resolve(process.cwd(), relativePath);
 
     if (!filePath.startsWith(uploadDirectory + path.sep)) {
       return res.status(400).json({
@@ -107,7 +110,7 @@ const downloadEmployeeLetterPdf = async (req, res) => {
       });
     }
 
-    return res.download(filePath, filename);
+    return res.download(filePath, path.basename(filePath));
   } catch (error) {
     console.error("Download Employee Letter Error:", error);
 

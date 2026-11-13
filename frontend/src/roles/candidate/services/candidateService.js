@@ -19,7 +19,26 @@ export function getMyApplication() {
   });
 }
 
-// Get Candidate Profile
+export function getMyApplications() {
+  return apiRequest("/candidates/my-applications", {
+    headers: getAuthHeaders(),
+  });
+}
+
+export function getApplicationDetails(id) {
+  return apiRequest(`/candidates/applications/${id}`, {
+    headers: getAuthHeaders(),
+  });
+}
+
+export function applyForJob(formData) {
+  return apiRequest("/candidates/apply", {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: formData,
+  });
+}
+
 export function getMyProfile() {
   return apiRequest("/candidates/profile", {
     headers: getAuthHeaders(),
@@ -49,10 +68,26 @@ export function uploadMyDocument(formData) {
   });
 }
 
+export function acceptOffer(formData) {
+  return apiRequest("/candidates/offer/accept", {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: formData,
+  });
+}
+
 // Delete Candidate Document
 export function deleteMyDocument(documentId) {
   return apiRequest(`/candidates/documents/${documentId}`, {
     method: "DELETE",
     headers: getAuthHeaders(),
+  });
+}
+
+export function declineOffer(data = {}) {
+  return apiRequest("/candidates/offer/decline", {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
   });
 }

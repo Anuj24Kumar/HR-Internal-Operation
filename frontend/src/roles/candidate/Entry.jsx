@@ -1,4 +1,3 @@
-
 import { Navigate, Route, Routes } from "react-router-dom";
 import useRoleAuth from "../useRoleAuth.js";
 
@@ -25,14 +24,13 @@ export default function CandidateEntry() {
         }
       >
         <Route index element={<Overview />} />
+        <Route path="application/:id" element={<MyApplication />} />
         <Route path="application" element={<MyApplication />} />
-        <Route path="documents" element={<MyDocuments />} />
         <Route path="offer" element={<MyOffer />} />
+        <Route path="documents" element={<MyDocuments />} />
         <Route path="profile" element={<MyProfile />} />
         <Route path="*" element={<Navigate to="/candidate" replace />} />
       </Route>
     </Routes>
   );
 }
-
-

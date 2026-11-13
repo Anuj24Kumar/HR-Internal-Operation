@@ -28,8 +28,8 @@ const onboardingTaskSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["Pending", "In Progress", "Completed"],
-      default: "Pending",
+      enum: ["pending", "in_progress", "completed"],
+      default: "pending",
     },
 
     completedAt: {
@@ -44,7 +44,7 @@ const onboardingSchema = new mongoose.Schema(
   {
     employeeId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Employee",
+      ref: "User",
       required: true,
       unique: true,
     },
@@ -78,7 +78,7 @@ onboardingSchema.pre("save", function () {
   }
 
   const completedTasks = this.tasks.filter(
-    (task) => task.status === "Completed"
+    (task) => task.status === "completed"
   ).length;
 
   this.progress = Math.round(

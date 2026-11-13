@@ -1,12 +1,9 @@
-const OnboardingTask = require("../../models/Intern/OnboardingTask");
-const Intern = require("../../models/Intern/Intern");
+const { OnboardingTask, User: Intern } = require("../../models");
 
 // GET: Logged-in intern ki onboarding checklist
 const getMyOnboarding = async (req, res) => {
   try {
-    const intern = await Intern.findOne({
-      user: req.user.id,
-    });
+    const intern = await Intern.findOne({ _id: req.user.id, role: "intern" });
 
     if (!intern) {
       return res.status(404).json({
@@ -61,9 +58,7 @@ const completeOnboardingTask = async (req, res) => {
       });
     }
 
-    const intern = await Intern.findOne({
-      user: req.user.id,
-    });
+    const intern = await Intern.findOne({ _id: req.user.id, role: "intern" });
 
     if (!intern) {
       return res.status(404).json({

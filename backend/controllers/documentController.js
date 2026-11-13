@@ -2,15 +2,13 @@
 const mongoose = require("mongoose");
 const path = require("path");
 const fs = require("fs/promises");
-const Document = require("../models/Document");
-const Candidate = require("../models/Candidate");
-const Employee = require("../models/Employee");
+const { Document, User } = require("../models");
 
 const uploadDocument = async (req, res) => {
   let savedFilePath;
 
   try {
-    const { candidateId, employeeId, documentType } = req.body;
+    const { candidateId, employeeId, documentType, label } = req.body;
 
     if (!req.file) {
       return res.status(400).json({
@@ -46,45 +44,37 @@ const uploadDocument = async (req, res) => {
       });
     }
 
-    if (candidateId) {
-      const candidate = await Candidate.findById(candidateId);
-
-      if (!candidate) {
-        return res.status(404).json({
-          success: false,
-          message: "Candidate not found",
-        });
-      }
-    }
-
-    if (employeeId) {
-      const employee = await Employee.findById(employeeId);
-
-      if (!employee) {
-        return res.status(404).json({
-          success: false,
-          message: "Employee not found",
-        });
-      }
+    const owner = await User.findOne({
+      _id: ownerId,
+      role: candidateId ? "candidate" : { $in: ["employee", "intern"] },
+    });
+    if (!owner) {
+      return res.status(404).json({
+        success: false,
+        message: "Document owner not found",
+      });
     }
 
     const document = await Document.create({
-      candidateId: candidateId || null,
-      employeeId: employeeId || null,
       ownerId,
-      ownerType: candidateId ? "Candidate" : "Employee",
+      ownerRole: owner.role,
+      category: ["aadhaar", "pan", "identity"].includes(documentType.trim().toLowerCase())
+        ? "identity"
+        : ["education", "educational_certificate"].includes(documentType.trim().toLowerCase())
+          ? "education"
+          : ["experience", "experience_letter"].includes(documentType.trim().toLowerCase())
+            ? "experience"
+            : "other",
       documentType: documentType.trim(),
+      label: typeof label === "string" && label.trim() ? label.trim() : path.basename(req.file.originalname),
       originalName: path.basename(req.file.originalname),
-      documentName: path.basename(req.file.originalname),
       fileName: req.file.filename,
       filePath: req.file.path,
-      fileUrl: req.file.path,
+      fileUrl: `/uploads/${path.basename(req.file.filename)}`,
       mimeType: req.file.mimetype,
-      fileType: req.file.mimetype,
-      size: req.file.size,
       fileSize: req.file.size,
       uploadedBy: req.user.id,
-      status: "Pending",
+      status: "pending",
     });
 
     return res.status(201).json({
@@ -124,7 +114,7 @@ const getDocuments = async (req, res) => {
     const filter = {};
 
     if (status) {
-      const allowedStatuses = ["Pending", "Verified", "Rejected"];
+      const allowedStatuses = ["pending", "verified", "rejected"];
 
       if (!allowedStatuses.includes(status)) {
         return res.status(400).json({
@@ -138,8 +128,7 @@ const getDocuments = async (req, res) => {
     }
 
     const documents = await Document.find(filter)
-      .populate("candidateId")
-      .populate("employeeId")
+      .populate("ownerId")
       .populate("uploadedBy", "name email")
       .populate("verifiedBy", "name email")
       .sort({ createdAt: -1 });
@@ -172,8 +161,7 @@ const getDocumentById = async (req, res) => {
     }
 
     const document = await Document.findById(id)
-      .populate("candidateId")
-      .populate("employeeId")
+      .populate("ownerId")
       .populate("uploadedBy", "name email")
       .populate("verifiedBy", "name email");
 
@@ -264,14 +252,14 @@ const verifyDocument = async (req, res) => {
       });
     }
 
-    if (document.status !== "Pending") {
+    if (document.status !== "pending") {
       return res.status(400).json({
         success: false,
         message: `Cannot verify a document with status ${document.status}`,
       });
     }
 
-    document.status = "Verified";
+    document.status = "verified";
     document.verifiedBy = req.user.id;
     document.verifiedAt = new Date();
     document.rejectionReason = "";
@@ -322,14 +310,14 @@ const rejectDocument = async (req, res) => {
       });
     }
 
-    if (document.status !== "Pending") {
+    if (document.status !== "pending") {
       return res.status(400).json({
         success: false,
         message: `Cannot reject a document with status ${document.status}`,
       });
     }
 
-    document.status = "Rejected";
+    document.status = "rejected";
     document.rejectionReason = reason.trim();
     document.verifiedBy = req.user.id;
     document.verifiedAt = new Date();

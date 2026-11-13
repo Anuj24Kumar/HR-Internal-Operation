@@ -8,6 +8,7 @@ import MySalary from "./pages/MySalary.jsx";
 import MyDocuments from "./pages/MyDocuments.jsx";
 import MyLetters from "./pages/MyLetters.jsx";
 import MyResignation from "./pages/MyResignation.jsx";
+import MyOffer from "../candidate/pages/MyOffer.jsx";
 
 export default function EmployeeEntry() {
   const { message, logout } = useRoleAuth("employee");
@@ -21,6 +22,7 @@ export default function EmployeeEntry() {
       >
         <Route index element={<Overview />} />
         <Route path="profile" element={<MyProfile />} />
+        <Route path="offer" element={<MyOffer />} />
         <Route path="history" element={<MyHistory />} />
         <Route path="salary" element={<MySalary />} />
         <Route path="documents" element={<MyDocuments />} />

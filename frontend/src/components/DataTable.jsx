@@ -3,6 +3,7 @@ export default function DataTable({
   columns = [],
   data = [],
   getRowKey,
+  onRowClick,
   emptyMessage = "No records found.",
   loading = false,
 }) {
@@ -50,12 +51,26 @@ export default function DataTable({
                       ? getRowKey(record)
                       : record._id || record.id || index
                   }
-                  className="transition hover:bg-slate-50"
+                  className={`transition hover:bg-slate-50 ${onRowClick ? "cursor-pointer" : ""}`}
+                  onClick={onRowClick ? () => onRowClick(record) : undefined}
+                  onKeyDown={onRowClick ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onRowClick(record);
+                    }
+                  } : undefined}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  role={onRowClick ? "button" : undefined}
                 >
                   {columns.map((column) => (
                     <td
                       key={column.key}
                       className="px-5 py-4 text-slate-700"
+                      onClick={onRowClick ? (event) => {
+                        if (event.target.closest("button, a, input, select, textarea")) {
+                          event.stopPropagation();
+                        }
+                      } : undefined}
                     >
                       {column.render
                         ? column.render(record)

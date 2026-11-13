@@ -1,12 +1,12 @@
-const Employee = require("../../models/Employee/Employee");
-const EmploymentHistory = require("../../models/Employee/EmploymentHistory");
+const { User: Employee, EmployeeHistory } = require("../../models");
 
 // GET /api/employee/profile
 const getMyEmployeeProfile = async (req, res) => {
   try {
-    const employee = await Employee.findOne({ user: req.user.id })
-      .populate("user", "firstName lastName email phone profileImage")
-      .populate("manager", "firstName lastName email");
+    const employee = await Employee.findOne({
+      _id: req.user.id,
+      role: { $in: ["employee", "intern"] },
+    }).populate("managerId", "firstName lastName email");
 
     if (!employee) {
       return res.status(404).json({
@@ -33,7 +33,10 @@ const getMyEmployeeProfile = async (req, res) => {
 // GET /api/employee/profile/history
 const getMyEmploymentHistory = async (req, res) => {
   try {
-    const employee = await Employee.findOne({ user: req.user.id });
+    const employee = await Employee.findOne({
+      _id: req.user.id,
+      role: { $in: ["employee", "intern"] },
+    });
 
     if (!employee) {
       return res.status(404).json({
@@ -42,11 +45,11 @@ const getMyEmploymentHistory = async (req, res) => {
       });
     }
 
-    const history = await EmploymentHistory.find({
-      employee: employee._id,
+    const history = await EmployeeHistory.find({
+      employeeId: employee._id,
     })
-      .populate("updatedBy", "firstName lastName email")
-      .sort({ effectiveDate: -1, createdAt: -1 });
+      .populate("changedBy", "firstName lastName email")
+      .sort({ createdAt: -1 });
 
     return res.status(200).json({
       success: true,
@@ -67,8 +70,11 @@ const getMyEmploymentHistory = async (req, res) => {
 // GET /api/employee/profile/salary
 const getMySalaryBreakdown = async (req, res) => {
   try {
-    const employee = await Employee.findOne({ user: req.user.id }).select(
-      "employeeCode department designation salary joiningDate"
+    const employee = await Employee.findOne({
+      _id: req.user.id,
+      role: { $in: ["employee", "intern"] },
+    }).select(
+      "employeeCode empId department designation salary joiningDate"
     );
 
     if (!employee) {
@@ -78,7 +84,7 @@ const getMySalaryBreakdown = async (req, res) => {
       });
     }
 
-    const salary = employee.salary || {};
+    const salary = typeof employee.salary === "number" ? { totalCTC: employee.salary } : employee.salary || {};
 
     return res.status(200).json({
       success: true,

@@ -1,31 +1,20 @@
-const User = require("./User");
-const Candidate = require("./Candidate");
-const Employee = require("./Employee");
-const Offer = require("./Offer");
-const LetterTemplate = require("./LetterTemplate");
-const Letter = require("./Letter");
-const Document = require("./Document");
-const ApprovalRequest = require("./ApprovalRequest");
-const Workflow = require("./Workflow");
-const OnboardingChecklist = require("./OnboardingChecklist");
-const Signature = require("./Signature");
-const Exit = require("./Exit");
-const Notification = require("./Notification");
-const AuditLog = require("./AuditLog");
-
 module.exports = {
-  User,
-  Candidate,
-  Employee,
-  Offer,
-  LetterTemplate,
-  Letter,
-  Document,
-  ApprovalRequest,
-  Workflow,
-  OnboardingChecklist,
-  Signature,
-  Exit,
-  Notification,
-  AuditLog,
+  User: require("./User"),
+  Application: require("./Application"),
+  Interview: require("./Interview"),
+  InterviewFeedback: require("./interviewer/InterviewFeedback"),
+  HiringRecommendation: require("./hiring-manager/HiringRecommendation"),
+  Offer: require("./Offer"),
+  Document: require("./Document"),
+  Letter: require("./Letter"),
+  LetterTemplate: require("./LetterTemplate"),
+  ApprovalRequest: require("./ApprovalRequest"),
+  Workflow: require("./Workflow"),
+  Notification: require("./Notification"),
+  AuditLog: require("./AuditLog"),
+  EmployeeHistory: require("./EmployeeHistory"),
+  Onboarding: require("./Onboarding"),
+  OnboardingTask: require("./Intern/OnboardingTask"),
+  Resignation: require("./Employee/Resignation"),
+  Exit: require("./Exit"),
 };
